@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Environment and local config
+.env
+.env.*
+!.env.example
+
+# Node/frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/test-results/
+frontend/playwright-report/
+frontend/.DS_Store
+
+# Logs and temp
+*.log
+*.tmp
+*.swp
