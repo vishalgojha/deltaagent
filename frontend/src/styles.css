@@ -1,0 +1,157 @@
+:root {
+  font-family: "Trebuchet MS", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  color: #0f172a;
+  background: #dbeafe;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 20% 10%, #bfdbfe 0%, transparent 35%),
+    radial-gradient(circle at 80% 20%, #fde68a 0%, transparent 35%),
+    linear-gradient(135deg, #eff6ff 0%, #f8fafc 60%, #eef2ff 100%);
+}
+
+.layout {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.card {
+  background: #ffffff;
+  border-radius: 14px;
+  padding: 18px;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+}
+
+.grid {
+  display: grid;
+  gap: 12px;
+}
+
+.grid-2 {
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+input, select, button, textarea {
+  font: inherit;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #94a3b8;
+}
+
+button {
+  background: #0b3b8f;
+  color: white;
+  border: none;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+button.secondary {
+  background: #475569;
+}
+
+button.danger {
+  background: #991b1b;
+}
+
+.muted {
+  color: #475569;
+}
+
+.auth-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+}
+
+.auth-hero {
+  padding: 48px;
+  color: #0b2347;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 14px;
+}
+
+.auth-chip {
+  width: fit-content;
+  background: #0b3b8f;
+  color: #fff;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+
+.auth-title {
+  margin: 0;
+  font-size: 42px;
+  line-height: 1.05;
+}
+
+.auth-subtitle {
+  margin: 0;
+  font-size: 18px;
+  color: #334155;
+  max-width: 540px;
+}
+
+.auth-branding {
+  margin-top: 14px;
+  color: #0f172a;
+  font-weight: 600;
+}
+
+.auth-form-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 460px;
+}
+
+@media (max-width: 920px) {
+  .auth-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-hero {
+    padding: 20px 20px 0;
+  }
+
+  .auth-title {
+    font-size: 32px;
+  }
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th, td {
+  border-bottom: 1px solid #e2e8f0;
+  text-align: left;
+  padding: 8px 4px;
+  font-size: 14px;
+}

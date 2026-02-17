@@ -1,0 +1,83 @@
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { OnboardingPage } from "./OnboardingPage";
+import * as endpoints from "../api/endpoints";
+import * as sessionStore from "../store/session";
+
+const navigateMock = vi.fn();
+
+vi.mock("react-router-dom", async () => {
+  const actual = await vi.importActual<typeof import("react-router-dom")>("react-router-dom");
+  return {
+    ...actual,
+    useNavigate: () => navigateMock
+  };
+});
+
+vi.mock("../api/endpoints", async () => {
+  const actual = await vi.importActual<typeof import("../api/endpoints")>("../api/endpoints");
+  return {
+    ...actual,
+    onboardClient: vi.fn(),
+    login: vi.fn(),
+    connectBroker: vi.fn()
+  };
+});
+
+vi.mock("../store/session", async () => {
+  const actual = await vi.importActual<typeof import("../store/session")>("../store/session");
+  return {
+    ...actual,
+    saveSession: vi.fn()
+  };
+});
+
+describe("OnboardingPage", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it("onboards client, logs in, optionally connects broker, and navigates", async () => {
+    const user = userEvent.setup();
+    vi.mocked(endpoints.onboardClient).mockResolvedValue({
+      id: "client-42",
+      email: "client@desk.io",
+      broker_type: "ibkr",
+      risk_params: {},
+      mode: "confirmation",
+      tier: "basic",
+      is_active: true,
+      created_at: "2026-02-17T00:00:00Z"
+    });
+    vi.mocked(endpoints.login).mockResolvedValue({
+      access_token: "token-42",
+      token_type: "bearer",
+      client_id: "client-42"
+    });
+    vi.mocked(endpoints.connectBroker).mockResolvedValue({
+      connected: true,
+      broker: "ibkr"
+    });
+
+    render(
+      <MemoryRouter>
+        <OnboardingPage />
+      </MemoryRouter>
+    );
+
+    await user.type(screen.getByPlaceholderText("client email"), "client@desk.io");
+    await user.type(screen.getByPlaceholderText("password"), "secret");
+    await user.click(screen.getByRole("button", { name: "Create Client" }));
+
+    await waitFor(() => {
+      expect(vi.mocked(endpoints.onboardClient)).toHaveBeenCalled();
+      expect(vi.mocked(endpoints.login)).toHaveBeenCalledWith("client@desk.io", "secret");
+      expect(vi.mocked(sessionStore.saveSession)).toHaveBeenCalledWith("token-42", "client-42");
+      expect(vi.mocked(endpoints.connectBroker)).toHaveBeenCalled();
+      expect(navigateMock).toHaveBeenCalledWith("/dashboard");
+    });
+  });
+});
+
