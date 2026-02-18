@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from time import perf_counter
 from typing import Any
 
+from redis.asyncio import Redis
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,12 +31,14 @@ class TradingAgent:
         memory_store: AgentMemoryStore,
         risk_governor: RiskGovernor,
         emergency_halt: EmergencyHaltController | None = None,
+        redis_client: Redis | None = None,
     ) -> None:
         self.broker = broker
         self.db = db
         self.memory_store = memory_store
         self.risk_governor = risk_governor
         self.emergency_halt = emergency_halt
+        self.redis_client = redis_client
         self.tools = AgentTools(broker=broker, db=db)
         self.settings = get_settings()
 
@@ -60,6 +63,7 @@ class TradingAgent:
         portfolio = await self.tools.get_portfolio_greeks()
         context.positions = portfolio["positions"]
         context.net_greeks = portfolio["net_greeks"]
+        await self._cache_portfolio_state(client_id, portfolio)
         mode = context.mode
         params = RiskParameters.from_dict(context.parameters)
 
@@ -96,6 +100,11 @@ class TradingAgent:
         context.message_history.append({"role": "assistant", "content": response["message"]})
         self.memory_store.update(context)
         await self._save_memory(client_id, "assistant", response["message"])
+        await self._publish_stream_event(
+            client_id,
+            "agent_message",
+            {"role": "assistant", "content": response["message"], "mode": mode},
+        )
         return response
 
     async def approve_proposal(self, client_id: uuid.UUID, proposal_id: int) -> dict[str, Any]:
@@ -126,13 +135,15 @@ class TradingAgent:
 
     async def status(self, client_id: uuid.UUID) -> dict[str, Any]:
         context = self.memory_store.get_or_create(client_id)
-        return {
+        payload = {
             "client_id": client_id,
             "mode": context.mode,
             "last_action": context.last_action,
             "healthy": context.healthy,
             "net_greeks": context.net_greeks,
         }
+        await self._publish_stream_event(client_id, "agent_status", payload)
+        return payload
 
     async def set_mode(self, client_id: uuid.UUID, mode: str) -> None:
         if mode == "autonomous" and not self.settings.autonomous_enabled:
@@ -150,6 +161,7 @@ class TradingAgent:
             client.mode = mode
             await self.db.commit()
         await self._audit(client_id, "mode_changed", {"mode": mode})
+        await self._publish_stream_event(client_id, "mode_changed", {"mode": mode})
 
     async def set_parameters(self, client_id: uuid.UUID, params: dict[str, Any]) -> None:
         context = self.memory_store.get_or_create(client_id)
@@ -160,6 +172,7 @@ class TradingAgent:
             client.risk_params = params
             await self.db.commit()
         await self._audit(client_id, "risk_params_updated", {"risk_params": params})
+        await self._publish_stream_event(client_id, "risk_params_updated", {"risk_params": params})
 
     async def _execute_trade(
         self,
@@ -178,6 +191,7 @@ class TradingAgent:
                 )
                 raise ValueError("Trading is globally halted by emergency control")
         portfolio = await self.tools.get_portfolio_greeks()
+        await self._cache_portfolio_state(client_id, portfolio)
         market = await self.tools.get_market_data(trade_payload["symbol"])
         net_delta = float(portfolio["net_greeks"]["delta"])
         order_delta_est = float(trade_payload.get("delta_estimate", 0.5))
@@ -234,6 +248,11 @@ class TradingAgent:
         await self.db.commit()
         await self.db.refresh(trade)
         await self._audit(client_id, "order_executed", {"trade_id": trade.id, "order": order, "reasoning": reasoning})
+        await self._publish_stream_event(
+            client_id,
+            "order_executed",
+            {"trade_id": trade.id, "order_id": order["order_id"], "status": order.get("status", "submitted")},
+        )
         return {"trade_id": trade.id, "order": order}
 
     async def _decide(
@@ -537,9 +556,43 @@ class TradingAgent:
             )
         )
         await self.db.commit()
+        await self._publish_stream_event(
+            client_id,
+            "audit",
+            {"event_type": event_type, "details": details, "risk_rule": risk_rule},
+        )
 
     async def _recent_trades(self, client_id: uuid.UUID, limit: int) -> list[Trade]:
         result = await self.db.execute(
             select(Trade).where(Trade.client_id == client_id).order_by(desc(Trade.timestamp)).limit(limit)
         )
         return list(result.scalars().all())
+
+    async def _cache_portfolio_state(self, client_id: uuid.UUID, portfolio: dict[str, Any]) -> None:
+        if self.redis_client is None:
+            return
+        key = f"client:{client_id}:greeks"
+        payload = {
+            "client_id": str(client_id),
+            "net_greeks": portfolio.get("net_greeks", {}),
+            "positions": portfolio.get("positions", []),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        try:
+            await self.redis_client.set(key, json.dumps(payload, default=str), ex=15)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to cache greeks in redis", extra={"client_id": str(client_id), "error": str(exc)})
+
+    async def _publish_stream_event(self, client_id: uuid.UUID, event_type: str, data: dict[str, Any]) -> None:
+        if self.redis_client is None:
+            return
+        channel = f"client:{client_id}:events"
+        payload = {
+            "type": event_type,
+            "data": data,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        try:
+            await self.redis_client.publish(channel, json.dumps(payload, default=str))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to publish stream event", extra={"client_id": str(client_id), "error": str(exc)})

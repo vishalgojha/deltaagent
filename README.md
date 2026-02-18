@@ -109,6 +109,8 @@ pytest backend/tests -q
 - `AUTONOMOUS_ENABLED=false` is a global kill switch. Autonomous mode requests are blocked and audited.
 - Emergency trading halt is independent of autonomous mode and blocks all trade executions (including proposal approval), with audit entries written per tenant.
 - Postgres RLS is enabled for tenant tables (`positions`, `trades`, `proposals`, `audit_log`, `agent_memory`) and enforced using DB session context (`app.current_client_id`, `app.is_admin`) in addition to existing application-level tenant checks.
+- Redis keys are namespaced per tenant (for example `client:{client_id}:greeks` and `client:{client_id}:events`) to keep real-time state isolated.
+- WebSocket stream emits `agent_status`, `greeks`, and incremental `agent_message` events for live frontend updates.
 
 Broker-related API failures now return structured `detail` payloads for telemetry:
 `{"type":"broker_error","operation":"...","broker":"ibkr|phillip","code":"...","message":"...","retryable":true|false,"context":{...}}`.

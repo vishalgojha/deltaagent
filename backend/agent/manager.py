@@ -1,5 +1,6 @@
 import uuid
 
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.agent.core import TradingAgent
@@ -11,11 +12,16 @@ from backend.safety.emergency_halt import EmergencyHaltController
 
 
 class AgentManager:
-    def __init__(self, emergency_halt: EmergencyHaltController | None = None) -> None:
+    def __init__(
+        self,
+        emergency_halt: EmergencyHaltController | None = None,
+        redis_client: Redis | None = None,
+    ) -> None:
         self.memory_store = AgentMemoryStore()
         self.risk_governor = RiskGovernor()
         self._brokers: dict[uuid.UUID, object] = {}
         self.emergency_halt = emergency_halt
+        self.redis_client = redis_client
 
     async def get_agent(
         self,
@@ -40,4 +46,5 @@ class AgentManager:
             memory_store=self.memory_store,
             risk_governor=self.risk_governor,
             emergency_halt=self.emergency_halt,
+            redis_client=self.redis_client,
         )

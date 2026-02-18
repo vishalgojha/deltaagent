@@ -1,12 +1,14 @@
 import asyncio
+import json
 import uuid
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.agent.manager import AgentManager
 from backend.auth.jwt import decode_access_token
 from backend.auth.vault import CredentialVault
-from backend.db.models import Client
+from backend.db.models import AgentMemory, Client
 
 
 router = APIRouter(tags=["websocket"])
@@ -44,9 +46,49 @@ async def stream_client(websocket: WebSocket, id: uuid.UUID) -> None:
                 await websocket.close()
                 return
             agent = await manager.get_agent(id, client.broker_type, creds, db)
+            last_memory_id = 0
             while True:
                 status_payload = await agent.status(id)
                 await websocket.send_json({"type": "agent_status", "data": status_payload})
+
+                greeks_payload = await _load_greeks_cache(websocket, id)
+                if greeks_payload is not None:
+                    await websocket.send_json({"type": "greeks", "data": greeks_payload})
+
+                messages_stmt = (
+                    select(AgentMemory)
+                    .where(AgentMemory.client_id == id, AgentMemory.id > last_memory_id)
+                    .order_by(AgentMemory.id.asc())
+                    .limit(25)
+                )
+                rows = await db.execute(messages_stmt)
+                for row in rows.scalars().all():
+                    last_memory_id = max(last_memory_id, row.id)
+                    await websocket.send_json(
+                        {
+                            "type": "agent_message",
+                            "data": {
+                                "role": row.message_role,
+                                "content": row.content,
+                                "timestamp": row.timestamp.isoformat(),
+                            },
+                        }
+                    )
                 await asyncio.sleep(1.0)
     except WebSocketDisconnect:
         return
+
+
+async def _load_greeks_cache(websocket: WebSocket, client_id: uuid.UUID) -> dict | None:
+    redis_client = getattr(websocket.app.state, "redis", None)
+    if redis_client is None:
+        return None
+    key = f"client:{client_id}:greeks"
+    try:
+        raw = await redis_client.get(key)
+        if not raw:
+            return None
+        payload = json.loads(raw)
+        return payload if isinstance(payload, dict) else None
+    except Exception:  # noqa: BLE001
+        return None

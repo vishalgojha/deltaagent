@@ -12,6 +12,18 @@ from backend.config import get_settings
 from backend.db.models import Base, Client, Proposal, Trade
 
 
+class _FakeRedis:
+    def __init__(self) -> None:
+        self.set_calls: list[tuple[str, str, int | None]] = []
+        self.publish_calls: list[tuple[str, str]] = []
+
+    async def set(self, key: str, value: str, ex: int | None = None) -> None:
+        self.set_calls.append((key, value, ex))
+
+    async def publish(self, channel: str, payload: str) -> None:
+        self.publish_calls.append((channel, payload))
+
+
 @pytest.mark.asyncio
 async def test_confirmation_mode_creates_proposal() -> None:
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
@@ -134,3 +146,38 @@ async def test_autonomous_mode_blocked_by_global_switch() -> None:
                 await agent.set_mode(client_id, "autonomous")
         finally:
             settings.autonomous_enabled = previous
+
+
+@pytest.mark.asyncio
+async def test_agent_caches_greeks_and_publishes_stream_events() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with session_maker() as db:
+        client_id = uuid.uuid4()
+        db.add(
+            Client(
+                id=client_id,
+                email="stream@example.com",
+                hashed_password=hash_password("secret"),
+                broker_type="ibkr",
+                encrypted_creds="enc",
+                risk_params={"delta_threshold": 0.2},
+                mode="confirmation",
+                tier="basic",
+                is_active=True,
+            )
+        )
+        await db.commit()
+
+        broker = MockBroker()
+        await broker.connect()
+        fake_redis = _FakeRedis()
+        agent = TradingAgent(broker, db, AgentMemoryStore(), RiskGovernor(), redis_client=fake_redis)  # type: ignore[arg-type]
+        await agent.set_mode(client_id, "confirmation")
+        await agent.chat(client_id, "Analyze and propose hedge")
+
+        assert any(key == f"client:{client_id}:greeks" for key, _, _ in fake_redis.set_calls)
+        assert any(channel == f"client:{client_id}:events" for channel, _ in fake_redis.publish_calls)
