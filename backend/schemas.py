@@ -36,6 +36,35 @@ class ChatRequest(BaseModel):
     message: str
 
 
+class ToolCallEntry(BaseModel):
+    tool_name: str
+    tool_input: dict = Field(default_factory=dict)
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    status: str = "completed"
+
+
+class ToolResultEntry(BaseModel):
+    tool_name: str
+    ok: bool = True
+    result: dict | list | str | float | int | None = None
+    error: str | None = None
+
+
+class ChatResponse(BaseModel):
+    mode: str
+    message: str
+    executed: bool | None = None
+    proposal_id: int | None = None
+    proposal: dict | None = None
+    execution: dict | None = None
+    tool_trace_id: str | None = None
+    planned_tools: list[str] = Field(default_factory=list)
+    tool_calls: list[ToolCallEntry] = Field(default_factory=list)
+    tool_results: list[ToolResultEntry] = Field(default_factory=list)
+    latency_ms: float | None = None
+
+
 class ApproveRejectResponse(BaseModel):
     proposal_id: int
     status: str
