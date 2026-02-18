@@ -603,9 +603,12 @@ class TradingAgent:
                 if not tool_uses:
                     text = "\n".join(text_chunks).strip()
                     parsed = json.loads(text) if text.startswith("{") else {}
+                    parsed_trade = parsed.get("trade") if "trade" in parsed else fallback_trade
+                    if parsed_trade is None and fallback_trade is not None:
+                        parsed_trade = fallback_trade
                     return {
                         "reasoning": parsed.get("reasoning", fallback_reasoning),
-                        "trade": parsed.get("trade", fallback_trade),
+                        "trade": parsed_trade,
                         "tool_trace_id": tool_trace_id,
                         "planned_tools": planned_tools,
                         "tool_calls": tool_calls,
@@ -730,9 +733,12 @@ class TradingAgent:
             if not isinstance(content, str) or not content.strip():
                 return None
             parsed = json.loads(content)
+            parsed_trade = parsed.get("trade") if "trade" in parsed else fallback_trade
+            if parsed_trade is None and fallback_trade is not None:
+                parsed_trade = fallback_trade
             return {
                 "reasoning": parsed.get("reasoning", fallback_reasoning),
-                "trade": parsed.get("trade", fallback_trade),
+                "trade": parsed_trade,
                 "tool_trace_id": tool_trace_id,
                 "planned_tools": [],
                 "tool_calls": [],
