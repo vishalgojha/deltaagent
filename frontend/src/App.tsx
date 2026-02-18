@@ -1,17 +1,25 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
-import { Navigate, Outlet, Route, Routes, Link, useNavigate } from "react-router-dom";
+import { Navigate, Outlet, Route, Routes, Link, useLocation, useNavigate } from "react-router-dom";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LoginPage } from "./pages/LoginPage";
 import { AgentConsolePage } from "./pages/AgentConsolePage";
 import { OnboardingPage } from "./pages/OnboardingPage";
 import { BrokerSettingsPage } from "./pages/BrokerSettingsPage";
-import { clearSession, getSession } from "./store/session";
+import { clearSession } from "./store/session";
+import { useSession } from "./hooks/useSession";
+import { queryClient } from "./queryClient";
 
-class RouteErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
+class RouteErrorBoundary extends Component<{ children: ReactNode; resetKey: string }, { hasError: boolean }> {
   state = { hasError: false };
 
   static getDerivedStateFromError() {
     return { hasError: true };
+  }
+
+  componentDidUpdate(prevProps: { resetKey: string }) {
+    if (prevProps.resetKey !== this.props.resetKey && this.state.hasError) {
+      this.setState({ hasError: false });
+    }
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
@@ -25,6 +33,14 @@ class RouteErrorBoundary extends Component<{ children: ReactNode }, { hasError: 
           <section className="card">
             <h3>Something went wrong</h3>
             <p className="muted">The page failed to render. Reload and try again.</p>
+            <div className="row">
+              <button type="button" onClick={() => this.setState({ hasError: false })}>
+                Try Again
+              </button>
+              <button type="button" className="secondary" onClick={() => window.location.assign("/dashboard")}>
+                Go Dashboard
+              </button>
+            </div>
           </section>
         </div>
       );
@@ -34,14 +50,14 @@ class RouteErrorBoundary extends Component<{ children: ReactNode }, { hasError: 
 }
 
 function RequireSession() {
-  const { token, clientId } = getSession();
+  const { token, clientId } = useSession();
   if (!token || !clientId) return <Navigate to="/login" replace />;
   return <Outlet />;
 }
 
 function ShellLayout() {
   const navigate = useNavigate();
-  const { token, clientId } = getSession();
+  const { token, clientId } = useSession();
 
   return (
     <div className="layout">
@@ -53,6 +69,7 @@ function ShellLayout() {
           className="secondary"
           onClick={() => {
             clearSession();
+            queryClient.clear();
             navigate("/login");
           }}
         >
@@ -69,9 +86,11 @@ function ShellLayout() {
   );
 }
 
-export function App() {
+function AppRoutes() {
+  const location = useLocation();
+
   return (
-    <RouteErrorBoundary>
+    <RouteErrorBoundary resetKey={location.pathname}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/onboard" element={<OnboardingPage />} />
@@ -81,4 +100,8 @@ export function App() {
       </Routes>
     </RouteErrorBoundary>
   );
+}
+
+export function App() {
+  return <AppRoutes />;
 }

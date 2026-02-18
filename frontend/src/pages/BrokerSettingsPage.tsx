@@ -1,10 +1,11 @@
-import { FormEvent, useEffect, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { FormEvent, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { connectBroker, getStatus } from "../api/endpoints";
 
 type Props = { clientId: string };
 
 export function BrokerSettingsPage({ clientId }: Props) {
+  const queryClient = useQueryClient();
   const [credsJson, setCredsJson] = useState("");
   const [connectError, setConnectError] = useState("");
   const [connectResult, setConnectResult] = useState("");
@@ -15,23 +16,11 @@ export function BrokerSettingsPage({ clientId }: Props) {
   });
 
   const connectMutation = useMutation({
-    mutationFn: (credentials?: Record<string, unknown>) => connectBroker(clientId, credentials)
+    mutationFn: (credentials?: Record<string, unknown>) => connectBroker(clientId, credentials),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["agent-status", clientId] });
+    }
   });
-
-  useEffect(() => {
-    if (connectMutation.error) {
-      setConnectError(connectMutation.error instanceof Error ? connectMutation.error.message : "Broker connection failed");
-    }
-  }, [connectMutation.error]);
-
-  useEffect(() => {
-    if (connectMutation.data) {
-      setConnectResult(
-        `Connection successful: connected=${String(connectMutation.data.connected)} broker=${String(connectMutation.data.broker)}`
-      );
-      void healthQuery.refetch();
-    }
-  }, [connectMutation.data, healthQuery]);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -55,9 +44,10 @@ export function BrokerSettingsPage({ clientId }: Props) {
     }
 
     try {
-      await connectMutation.mutateAsync(parsed);
-    } catch {
-      // handled by mutation state
+      const result = await connectMutation.mutateAsync(parsed);
+      setConnectResult(`Connection successful: connected=${String(result.connected)} broker=${String(result.broker)}`);
+    } catch (err) {
+      setConnectError(err instanceof Error ? err.message : "Broker connection failed");
     }
   }
 

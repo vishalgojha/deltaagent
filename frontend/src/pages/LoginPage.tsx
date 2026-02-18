@@ -1,4 +1,5 @@
 import { FormEvent, useState } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { login } from "../api/endpoints";
 import { saveSession } from "../store/session";
@@ -8,20 +9,20 @@ export function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+
+  const loginMutation = useMutation({
+    mutationFn: (payload: { email: string; password: string }) => login(payload.email, payload.password)
+  });
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
-    setLoading(true);
     setError("");
     try {
-      const data = await login(email, password);
+      const data = await loginMutation.mutateAsync({ email, password });
       saveSession(data.access_token, data.client_id);
       navigate("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
-    } finally {
-      setLoading(false);
     }
   }
 
@@ -47,7 +48,7 @@ export function LoginPage() {
               placeholder="password"
               type="password"
             />
-            <button disabled={loading}>{loading ? "Signing in..." : "Sign in"}</button>
+            <button disabled={loginMutation.isPending}>{loginMutation.isPending ? "Signing in..." : "Sign in"}</button>
           </form>
           <p className="muted">
             New client? <Link to="/onboard">Create account</Link>

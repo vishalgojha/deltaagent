@@ -1,10 +1,11 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { OnboardingPage } from "./OnboardingPage";
 import * as endpoints from "../api/endpoints";
 import * as sessionStore from "../store/session";
+import { renderWithProviders } from "../test/renderWithProviders";
 
 const navigateMock = vi.fn();
 
@@ -61,7 +62,7 @@ describe("OnboardingPage", () => {
       broker: "ibkr"
     });
 
-    render(
+    renderWithProviders(
       <MemoryRouter>
         <OnboardingPage />
       </MemoryRouter>
@@ -80,4 +81,3 @@ describe("OnboardingPage", () => {
     });
   });
 });
-

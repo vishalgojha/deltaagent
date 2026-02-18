@@ -1,10 +1,11 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { LoginPage } from "./LoginPage";
 import * as endpoints from "../api/endpoints";
 import * as sessionStore from "../store/session";
+import { renderWithProviders } from "../test/renderWithProviders";
 
 const navigateMock = vi.fn();
 
@@ -45,7 +46,7 @@ describe("LoginPage", () => {
       client_id: "client-1"
     });
 
-    render(
+    renderWithProviders(
       <MemoryRouter>
         <LoginPage />
       </MemoryRouter>
@@ -62,4 +63,3 @@ describe("LoginPage", () => {
     });
   });
 });
-

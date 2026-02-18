@@ -1,4 +1,5 @@
 import { FormEvent, useMemo, useState } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { connectBroker, login, onboardClient } from "../api/endpoints";
 import { saveSession } from "../store/session";
@@ -43,8 +44,33 @@ export function OnboardingPage() {
   const [riskJson, setRiskJson] = useState(DEFAULT_RISK);
   const [credsJson, setCredsJson] = useState(DEFAULT_IBKR);
   const [connectNow, setConnectNow] = useState(true);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  const onboardingMutation = useMutation({
+    mutationFn: async (payload: {
+      email: string;
+      password: string;
+      brokerType: "ibkr" | "phillip";
+      brokerCreds: Record<string, unknown>;
+      riskParameters: Record<string, unknown>;
+      subscriptionTier: string;
+      connectNow: boolean;
+    }) => {
+      const onboarded = await onboardClient({
+        email: payload.email,
+        password: payload.password,
+        broker_type: payload.brokerType,
+        broker_credentials: payload.brokerCreds,
+        risk_parameters: payload.riskParameters,
+        subscription_tier: payload.subscriptionTier
+      });
+      const auth = await login(payload.email, payload.password);
+      if (payload.connectNow) {
+        await connectBroker(onboarded.id, payload.brokerCreds);
+      }
+      return { auth };
+    }
+  });
 
   const placeholderCreds = useMemo(
     () => (brokerType === "ibkr" ? DEFAULT_IBKR : DEFAULT_PHILLIP),
@@ -53,29 +79,23 @@ export function OnboardingPage() {
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
-    setLoading(true);
     setError("");
     try {
       const brokerCreds = JSON.parse(credsJson) as Record<string, unknown>;
       const riskParameters = JSON.parse(riskJson) as Record<string, unknown>;
-      const onboarded = await onboardClient({
+      const { auth } = await onboardingMutation.mutateAsync({
         email,
         password,
-        broker_type: brokerType,
-        broker_credentials: brokerCreds,
-        risk_parameters: riskParameters,
-        subscription_tier: subscriptionTier
+        brokerType,
+        brokerCreds,
+        riskParameters,
+        subscriptionTier,
+        connectNow
       });
-      const auth = await login(email, password);
       saveSession(auth.access_token, auth.client_id);
-      if (connectNow) {
-        await connectBroker(onboarded.id, brokerCreds);
-      }
       navigate("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Onboarding failed");
-    } finally {
-      setLoading(false);
     }
   }
 
@@ -152,7 +172,9 @@ export function OnboardingPage() {
               <textarea rows={8} value={riskJson} onChange={(e) => setRiskJson(e.target.value)} />
             </label>
 
-            <button disabled={loading}>{loading ? "Creating client..." : "Create Client"}</button>
+            <button disabled={onboardingMutation.isPending}>
+              {onboardingMutation.isPending ? "Creating client..." : "Create Client"}
+            </button>
           </form>
           {error && <p style={{ color: "#991b1b" }}>{error}</p>}
         </div>

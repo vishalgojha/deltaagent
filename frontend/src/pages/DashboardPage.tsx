@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { getPositions, getRiskParameters, getStatus, getTrades, updateRiskParameters } from "../api/endpoints";
 import {
@@ -15,14 +15,8 @@ import type { AgentStatus, Position, Trade } from "../types";
 type Props = { clientId: string };
 
 export function DashboardPage({ clientId }: Props) {
-  const [status, setStatus] = useState<AgentStatus | null>(null);
-  const [positions, setPositions] = useState<Position[]>([]);
-  const [trades, setTrades] = useState<Trade[]>([]);
-  const [error, setError] = useState("");
   const [riskValues, setRiskValues] = useState<RiskFormValues>(toRiskFormValues(null));
   const [riskErrors, setRiskErrors] = useState<RiskFormErrors>({});
-  const [riskLoading, setRiskLoading] = useState(true);
-  const [riskSaving, setRiskSaving] = useState(false);
   const [riskStatus, setRiskStatus] = useState("");
   const [riskServerError, setRiskServerError] = useState("");
 
@@ -39,25 +33,20 @@ export function DashboardPage({ clientId }: Props) {
     queryFn: () => getRiskParameters(clientId)
   });
 
-  useEffect(() => {
-    if (dashboardQuery.data) {
-      setStatus(dashboardQuery.data.status);
-      setPositions(dashboardQuery.data.positions);
-      setTrades(dashboardQuery.data.trades);
-      setError("");
-    }
-    if (dashboardQuery.error) {
-      setError(dashboardQuery.error instanceof Error ? dashboardQuery.error.message : "Failed to load dashboard");
-    }
-  }, [dashboardQuery.data, dashboardQuery.error]);
+  const status: AgentStatus | null = dashboardQuery.data?.status ?? null;
+  const positions: Position[] = dashboardQuery.data?.positions ?? [];
+  const trades: Trade[] = dashboardQuery.data?.trades ?? [];
+  const dashboardError = useMemo(
+    () =>
+      dashboardQuery.error instanceof Error ? dashboardQuery.error.message : dashboardQuery.error ? "Failed to load dashboard" : "",
+    [dashboardQuery.error]
+  );
 
   useEffect(() => {
     if (riskQuery.data) {
       setRiskValues(toRiskFormValues(riskQuery.data.risk_parameters));
-      setRiskLoading(false);
     }
     if (riskQuery.error) {
-      setRiskLoading(false);
       setRiskServerError(riskQuery.error instanceof Error ? riskQuery.error.message : "Failed to load risk controls");
     }
   }, [riskQuery.data, riskQuery.error]);
@@ -92,15 +81,12 @@ export function DashboardPage({ clientId }: Props) {
     }
 
     setRiskErrors({});
-    setRiskSaving(true);
     try {
       const response = await saveRiskMutation.mutateAsync(validation.parsed);
       setRiskValues(toRiskFormValues(response.risk_parameters));
       setRiskStatus("Risk controls updated");
     } catch (err) {
       setRiskServerError(err instanceof Error ? err.message : "Failed to update risk controls");
-    } finally {
-      setRiskSaving(false);
     }
   }
 
@@ -146,7 +132,7 @@ export function DashboardPage({ clientId }: Props) {
 
       <section className="card">
         <h3>Risk Controls</h3>
-        {riskLoading ? (
+        {riskQuery.isLoading ? (
           <p className="muted">Loading risk controls...</p>
         ) : (
           <form className="grid" onSubmit={onRiskSubmit}>
@@ -206,8 +192,8 @@ export function DashboardPage({ clientId }: Props) {
               )}
             </label>
 
-            <button type="submit" disabled={riskSaving}>
-              {riskSaving ? "Saving..." : "Save Risk Controls"}
+            <button type="submit" disabled={saveRiskMutation.isPending}>
+              {saveRiskMutation.isPending ? "Saving..." : "Save Risk Controls"}
             </button>
             {riskStatus && <p style={{ color: "#166534", margin: 0 }}>{riskStatus}</p>}
             {riskServerError && <p style={{ color: "#991b1b", margin: 0 }}>{riskServerError}</p>}
@@ -240,7 +226,7 @@ export function DashboardPage({ clientId }: Props) {
           </tbody>
         </table>
       </section>
-      {error && <p style={{ color: "#991b1b" }}>{error}</p>}
+      {dashboardError && <p style={{ color: "#991b1b" }}>{dashboardError}</p>}
     </div>
   );
 }
