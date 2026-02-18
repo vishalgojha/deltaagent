@@ -70,10 +70,31 @@ describe("OnboardingPage", () => {
 
     await user.type(screen.getByPlaceholderText("client email"), "client@desk.io");
     await user.type(screen.getByPlaceholderText("password"), "secret");
+    await user.clear(screen.getByPlaceholderText("1"));
+    await user.type(screen.getByPlaceholderText("1"), "42");
     await user.click(screen.getByRole("button", { name: "Create Client" }));
 
     await waitFor(() => {
-      expect(vi.mocked(endpoints.onboardClient)).toHaveBeenCalled();
+      expect(vi.mocked(endpoints.onboardClient)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          email: "client@desk.io",
+          password: "secret",
+          broker_type: "ibkr",
+          broker_credentials: expect.objectContaining({
+            host: "localhost",
+            port: 4002,
+            client_id: 42,
+            underlying_instrument: "IND"
+          }),
+          risk_parameters: expect.objectContaining({
+            delta_threshold: 0.2,
+            max_size: 10,
+            max_loss: 5000,
+            max_open_positions: 20
+          }),
+          subscription_tier: "basic"
+        })
+      );
       expect(vi.mocked(endpoints.login)).toHaveBeenCalledWith("client@desk.io", "secret");
       expect(vi.mocked(sessionStore.saveSession)).toHaveBeenCalledWith("token-42", "client-42");
       expect(vi.mocked(endpoints.connectBroker)).toHaveBeenCalled();

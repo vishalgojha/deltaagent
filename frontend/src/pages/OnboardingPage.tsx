@@ -4,36 +4,24 @@ import { useNavigate } from "react-router-dom";
 import { connectBroker, login, onboardClient } from "../api/endpoints";
 import { saveSession } from "../store/session";
 
-const DEFAULT_RISK = JSON.stringify(
-  {
-    delta_threshold: 0.2,
-    max_size: 10,
-    max_loss: 5000,
-    max_open_positions: 20
-  },
-  null,
-  2
-);
+const DEFAULT_RISK = {
+  delta_threshold: "0.2",
+  max_size: "10",
+  max_loss: "5000",
+  max_open_positions: "20"
+};
 
-const DEFAULT_IBKR = JSON.stringify(
-  {
-    host: "localhost",
-    port: 4002,
-    client_id: 1,
-    underlying_instrument: "IND"
-  },
-  null,
-  2
-);
+const DEFAULT_IBKR = {
+  host: "localhost",
+  port: "4002",
+  client_id: "1",
+  underlying_instrument: "IND"
+};
 
-const DEFAULT_PHILLIP = JSON.stringify(
-  {
-    client_id: "",
-    client_secret: ""
-  },
-  null,
-  2
-);
+const DEFAULT_PHILLIP = {
+  client_id: "",
+  client_secret: ""
+};
 
 export function OnboardingPage() {
   const navigate = useNavigate();
@@ -41,8 +29,9 @@ export function OnboardingPage() {
   const [password, setPassword] = useState("");
   const [brokerType, setBrokerType] = useState<"ibkr" | "phillip">("ibkr");
   const [subscriptionTier, setSubscriptionTier] = useState("basic");
-  const [riskJson, setRiskJson] = useState(DEFAULT_RISK);
-  const [credsJson, setCredsJson] = useState(DEFAULT_IBKR);
+  const [risk, setRisk] = useState(DEFAULT_RISK);
+  const [ibkrCreds, setIbkrCreds] = useState(DEFAULT_IBKR);
+  const [phillipCreds, setPhillipCreds] = useState(DEFAULT_PHILLIP);
   const [connectNow, setConnectNow] = useState(true);
   const [error, setError] = useState("");
 
@@ -72,8 +61,8 @@ export function OnboardingPage() {
     }
   });
 
-  const placeholderCreds = useMemo(
-    () => (brokerType === "ibkr" ? DEFAULT_IBKR : DEFAULT_PHILLIP),
+  const activeBrokerSummary = useMemo(
+    () => (brokerType === "ibkr" ? "IBKR gateway credentials" : "Phillip API credentials"),
     [brokerType]
   );
 
@@ -81,8 +70,46 @@ export function OnboardingPage() {
     event.preventDefault();
     setError("");
     try {
-      const brokerCreds = JSON.parse(credsJson) as Record<string, unknown>;
-      const riskParameters = JSON.parse(riskJson) as Record<string, unknown>;
+      const brokerCreds: Record<string, unknown> =
+        brokerType === "ibkr"
+          ? {
+              host: ibkrCreds.host.trim(),
+              port: Number(ibkrCreds.port),
+              client_id: Number(ibkrCreds.client_id),
+              underlying_instrument: ibkrCreds.underlying_instrument.trim() || "IND"
+            }
+          : {
+              client_id: phillipCreds.client_id.trim(),
+              client_secret: phillipCreds.client_secret
+            };
+
+      const riskParameters: Record<string, unknown> = {
+        delta_threshold: Number(risk.delta_threshold),
+        max_size: Number(risk.max_size),
+        max_loss: Number(risk.max_loss),
+        max_open_positions: Number(risk.max_open_positions)
+      };
+
+      if (brokerType === "ibkr") {
+        if (!brokerCreds.host || !Number.isFinite(brokerCreds.port) || !Number.isFinite(brokerCreds.client_id)) {
+          setError("Please enter valid IBKR host, port, and client ID");
+          return;
+        }
+      } else if (!phillipCreds.client_id.trim() || !phillipCreds.client_secret.trim()) {
+        setError("Please enter Phillip client ID and client secret");
+        return;
+      }
+
+      if (
+        !Number.isFinite(riskParameters.delta_threshold) ||
+        !Number.isFinite(riskParameters.max_size) ||
+        !Number.isFinite(riskParameters.max_loss) ||
+        !Number.isFinite(riskParameters.max_open_positions)
+      ) {
+        setError("Risk parameters must be valid numbers");
+        return;
+      }
+
       const { auth } = await onboardingMutation.mutateAsync({
         email,
         password,
@@ -136,7 +163,6 @@ export function OnboardingPage() {
                 onChange={(e) => {
                   const next = e.target.value as "ibkr" | "phillip";
                   setBrokerType(next);
-                  setCredsJson(next === "ibkr" ? DEFAULT_IBKR : DEFAULT_PHILLIP);
                 }}
               >
                 <option value="ibkr">IBKR</option>
@@ -157,20 +183,102 @@ export function OnboardingPage() {
               </label>
             </div>
 
-            <label>
-              Broker Credentials (JSON)
-              <textarea
-                rows={8}
-                value={credsJson}
-                placeholder={placeholderCreds}
-                onChange={(e) => setCredsJson(e.target.value)}
-              />
-            </label>
+            <p className="muted" style={{ margin: 0 }}>
+              {activeBrokerSummary}
+            </p>
+            {brokerType === "ibkr" ? (
+              <div className="grid grid-2">
+                <label className="grid">
+                  IBKR Host
+                  <input
+                    value={ibkrCreds.host}
+                    onChange={(e) => setIbkrCreds((prev) => ({ ...prev, host: e.target.value }))}
+                    placeholder="localhost"
+                  />
+                </label>
+                <label className="grid">
+                  IBKR Port
+                  <input
+                    value={ibkrCreds.port}
+                    onChange={(e) => setIbkrCreds((prev) => ({ ...prev, port: e.target.value }))}
+                    inputMode="numeric"
+                    placeholder="4002"
+                  />
+                </label>
+                <label className="grid">
+                  Client ID
+                  <input
+                    value={ibkrCreds.client_id}
+                    onChange={(e) => setIbkrCreds((prev) => ({ ...prev, client_id: e.target.value }))}
+                    inputMode="numeric"
+                    placeholder="1"
+                  />
+                </label>
+                <label className="grid">
+                  Underlying Instrument
+                  <input
+                    value={ibkrCreds.underlying_instrument}
+                    onChange={(e) => setIbkrCreds((prev) => ({ ...prev, underlying_instrument: e.target.value }))}
+                    placeholder="IND"
+                  />
+                </label>
+              </div>
+            ) : (
+              <div className="grid grid-2">
+                <label className="grid">
+                  Phillip Client ID
+                  <input
+                    value={phillipCreds.client_id}
+                    onChange={(e) => setPhillipCreds((prev) => ({ ...prev, client_id: e.target.value }))}
+                    placeholder="client-id"
+                  />
+                </label>
+                <label className="grid">
+                  Phillip Client Secret
+                  <input
+                    type="password"
+                    value={phillipCreds.client_secret}
+                    onChange={(e) => setPhillipCreds((prev) => ({ ...prev, client_secret: e.target.value }))}
+                    placeholder="client-secret"
+                  />
+                </label>
+              </div>
+            )}
 
-            <label>
-              Risk Parameters (JSON)
-              <textarea rows={8} value={riskJson} onChange={(e) => setRiskJson(e.target.value)} />
-            </label>
+            <div className="grid grid-2">
+              <label className="grid">
+                Delta Threshold
+                <input
+                  value={risk.delta_threshold}
+                  onChange={(e) => setRisk((prev) => ({ ...prev, delta_threshold: e.target.value }))}
+                  inputMode="decimal"
+                />
+              </label>
+              <label className="grid">
+                Max Size
+                <input
+                  value={risk.max_size}
+                  onChange={(e) => setRisk((prev) => ({ ...prev, max_size: e.target.value }))}
+                  inputMode="numeric"
+                />
+              </label>
+              <label className="grid">
+                Max Loss
+                <input
+                  value={risk.max_loss}
+                  onChange={(e) => setRisk((prev) => ({ ...prev, max_loss: e.target.value }))}
+                  inputMode="decimal"
+                />
+              </label>
+              <label className="grid">
+                Max Open Positions
+                <input
+                  value={risk.max_open_positions}
+                  onChange={(e) => setRisk((prev) => ({ ...prev, max_open_positions: e.target.value }))}
+                  inputMode="numeric"
+                />
+              </label>
+            </div>
 
             <button disabled={onboardingMutation.isPending}>
               {onboardingMutation.isPending ? "Creating client..." : "Create Client"}
