@@ -79,6 +79,7 @@ test("login -> chat proposal -> approve/reject", async ({ page }) => {
 
   await page.route("**/clients/client-1/agent/chat", async (route) => {
     const id = nextProposalId++;
+    const toolUseId = `tool-${id}`;
     proposals.push({
       id,
       status: "pending",
@@ -88,7 +89,36 @@ test("login -> chat proposal -> approve/reject", async ({ page }) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ message: "proposal generated", proposal_id: id })
+      body: JSON.stringify({
+        mode: "confirmation",
+        message: "proposal generated",
+        proposal_id: id,
+        proposal: { action: "SELL", symbol: "ES", qty: 1 },
+        tool_trace_id: `trace-${id}`,
+        planned_tools: [{ name: "get_portfolio_greeks", input: {} }],
+        tool_calls: [
+          {
+            tool_use_id: toolUseId,
+            name: "get_portfolio_greeks",
+            input: {},
+            started_at: "2026-02-18T00:00:00Z",
+            completed_at: "2026-02-18T00:00:00Z",
+            duration_ms: 12
+          }
+        ],
+        tool_results: [
+          {
+            tool_use_id: toolUseId,
+            name: "get_portfolio_greeks",
+            output: { net_greeks: { delta: 0.5 } },
+            success: true,
+            error: null,
+            started_at: "2026-02-18T00:00:00Z",
+            completed_at: "2026-02-18T00:00:00Z",
+            duration_ms: 12
+          }
+        ]
+      })
     });
   });
 
@@ -117,6 +147,8 @@ test("login -> chat proposal -> approve/reject", async ({ page }) => {
 
   await page.getByPlaceholder("Ask the agent...").fill("create hedge 1");
   await page.getByRole("button", { name: "Send" }).click();
+  await expect(page.getByText("Tool Calling Workflow")).toBeVisible();
+  await expect(page.getByText("Step 1: get_portfolio_greeks")).toBeVisible();
   await expect(page.getByText("Proposal #1")).toBeVisible();
   await page.getByRole("button", { name: "Approve" }).first().click();
   await expect(page.getByText("Proposal #1 approved.")).toBeVisible();

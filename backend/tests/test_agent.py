@@ -45,6 +45,10 @@ async def test_confirmation_mode_creates_proposal() -> None:
         memory.get_or_create(client_id).positions = [{"qty": 1, "delta": 1.0, "gamma": 0, "theta": 0, "vega": 0}]
         result = await agent.chat(client_id, "Rebalance now")
         assert result["mode"] == "confirmation"
+        assert isinstance(result.get("tool_trace_id"), str)
+        assert isinstance(result.get("planned_tools"), list)
+        assert isinstance(result.get("tool_calls"), list)
+        assert isinstance(result.get("tool_results"), list)
         rows = await db.execute(Proposal.__table__.select())
         assert rows.first() is not None
 

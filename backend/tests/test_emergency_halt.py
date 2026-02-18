@@ -2,18 +2,35 @@ import uuid
 from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from backend.agent.core import TradingAgent
 from backend.agent.memory import AgentMemoryStore
 from backend.agent.risk import RiskGovernor
+from backend.api.deps import require_admin_access
 from backend.api.admin import set_emergency_halt
 from backend.auth.jwt import hash_password
 from backend.brokers.mock import MockBroker
+from backend.config import get_settings
 from backend.db.models import AuditLog, Base, Client, Proposal
 from backend.schemas import EmergencyHaltRequest
 from backend.safety.emergency_halt import EmergencyHaltController
+
+
+def test_admin_key_required_for_emergency_halt_access() -> None:
+    settings = get_settings()
+    previous = settings.admin_api_key
+    settings.admin_api_key = "expected-admin-key"
+    try:
+        with pytest.raises(HTTPException) as exc:
+            require_admin_access("wrong-key")
+        assert exc.value.status_code == 401
+
+        assert require_admin_access("expected-admin-key") == "admin"
+    finally:
+        settings.admin_api_key = previous
 
 
 @pytest.mark.asyncio
@@ -60,7 +77,13 @@ async def test_emergency_halt_endpoint_writes_audit_rows() -> None:
         assert response.halted is True
         assert response.reason == "manual kill switch"
         rows = await db.execute(select(AuditLog).where(AuditLog.event_type == "emergency_halt_updated"))
-        assert len(rows.scalars().all()) == 2
+        events = rows.scalars().all()
+        assert len(events) == 2
+        for event in events:
+            assert event.details["halted"] is True
+            assert event.details["reason"] == "manual kill switch"
+            assert event.details["updated_by"] == "admin"
+            assert isinstance(event.details["updated_at"], str)
 
 
 @pytest.mark.asyncio

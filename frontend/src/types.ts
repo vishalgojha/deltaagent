@@ -51,6 +51,39 @@ export type Proposal = {
   resolved_at: string | null;
 };
 
+export type ChatToolCall = {
+  tool_use_id: string;
+  name: string;
+  input: Record<string, unknown>;
+  started_at: string;
+  completed_at: string;
+  duration_ms: number;
+};
+
+export type ChatToolResult = {
+  tool_use_id: string;
+  name: string;
+  output: Record<string, unknown>;
+  success: boolean;
+  error?: string | null;
+  started_at: string;
+  completed_at: string;
+  duration_ms: number;
+};
+
+export type ChatResponse = {
+  mode: "confirmation" | "autonomous";
+  message: string;
+  executed?: boolean;
+  proposal_id?: number;
+  proposal?: Record<string, unknown>;
+  execution?: Record<string, unknown>;
+  tool_trace_id: string;
+  planned_tools: Array<Record<string, unknown>>;
+  tool_calls: ChatToolCall[];
+  tool_results: ChatToolResult[];
+};
+
 export type ClientOut = {
   id: string;
   email: string;

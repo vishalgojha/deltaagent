@@ -1,5 +1,5 @@
 import { api } from "./client";
-import type { AgentStatus, ClientOut, LoginResponse, Position, Proposal, Trade } from "../types";
+import type { AgentStatus, ChatResponse, ClientOut, LoginResponse, Position, Proposal, Trade } from "../types";
 import type { RiskParameters } from "../features/riskControls";
 
 export function login(email: string, password: string) {
@@ -49,7 +49,7 @@ export function getProposals(clientId: string) {
 }
 
 export function sendChat(clientId: string, message: string) {
-  return api<Record<string, unknown>>(`/clients/${clientId}/agent/chat`, {
+  return api<ChatResponse>(`/clients/${clientId}/agent/chat`, {
     method: "POST",
     body: JSON.stringify({ message })
   });

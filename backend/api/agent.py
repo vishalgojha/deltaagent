@@ -12,6 +12,7 @@ from backend.db.session import get_db_session
 from backend.schemas import (
     AgentStatusOut,
     ApproveRejectResponse,
+    ChatResponse,
     ChatRequest,
     ModeUpdateRequest,
     ParametersUpdateRequest,
@@ -82,14 +83,14 @@ async def get_parameters(
     return {"client_id": id, "risk_parameters": current_client.risk_params or {}}
 
 
-@router.post("/{id}/agent/chat")
+@router.post("/{id}/agent/chat", response_model=ChatResponse)
 async def chat(
     id: uuid.UUID,
     payload: ChatRequest,
     request: Request,
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db_session),
-) -> dict:
+) -> ChatResponse:
     assert_client_scope(id, current_client)
     creds = _decrypt_creds(current_client)
     manager = request.app.state.agent_manager
@@ -98,7 +99,7 @@ async def chat(
     except BrokerError as exc:
         raise broker_http_exception(exc, operation="get_agent", broker=current_client.broker_type) from exc
     try:
-        return await agent.chat(id, payload.message)
+        return ChatResponse.model_validate(await agent.chat(id, payload.message))
     except BrokerError as exc:
         raise broker_http_exception(exc, operation="chat", broker=current_client.broker_type) from exc
     except Exception as exc:  # noqa: BLE001

@@ -8,6 +8,7 @@ import {
   sendChat,
   setMode
 } from "../api/endpoints";
+import type { ChatResponse } from "../types";
 import { useAgentStream } from "../hooks/useAgentStream";
 
 type Props = { clientId: string; token: string };
@@ -279,9 +280,18 @@ export function AgentConsolePage({ clientId, token }: Props) {
     }
   }
 
-  function asTimelineFromChat(response: Record<string, unknown>): TimelineItem[] {
+  function asTimelineFromChat(response: ChatResponse): TimelineItem[] {
     const createdAt = nowIso();
     const items: TimelineItem[] = [];
+
+    if (response.tool_trace_id) {
+      items.push({
+        id: crypto.randomUUID(),
+        kind: "status",
+        text: `tool_trace:${response.tool_trace_id}`,
+        createdAt
+      });
+    }
 
     if (typeof response.message === "string" && response.message.trim()) {
       items.push({ id: crypto.randomUUID(), kind: "assistant", text: response.message, createdAt });
@@ -289,25 +299,48 @@ export function AgentConsolePage({ clientId, token }: Props) {
 
     const toolCalls = Array.isArray(response.tool_calls) ? response.tool_calls : [];
     for (const call of toolCalls) {
-      if (isRecord(call)) {
-        items.push({
-          id: crypto.randomUUID(),
-          kind: "tool_call",
-          text: String(call.name ?? "tool_call"),
-          payload: call,
-          createdAt
-        });
-      }
+      items.push({
+        id: call.tool_use_id || crypto.randomUUID(),
+        kind: "tool_call",
+        text: call.name || "tool_call",
+        payload: {
+          tool_use_id: call.tool_use_id,
+          input: call.input,
+          started_at: call.started_at,
+          completed_at: call.completed_at,
+          duration_ms: call.duration_ms
+        },
+        createdAt
+      });
     }
 
     const toolResults = Array.isArray(response.tool_results) ? response.tool_results : [];
     for (const result of toolResults) {
-      if (isRecord(result)) {
+      items.push({
+        id: crypto.randomUUID(),
+        kind: "tool_result",
+        text: result.name || "tool_result",
+        payload: {
+          tool_use_id: result.tool_use_id,
+          output: result.output,
+          success: result.success,
+          error: result.error,
+          started_at: result.started_at,
+          completed_at: result.completed_at,
+          duration_ms: result.duration_ms
+        },
+        createdAt
+      });
+    }
+
+    if (toolCalls.length === 0 && Array.isArray(response.planned_tools)) {
+      for (const planned of response.planned_tools) {
+        if (!isRecord(planned)) continue;
         items.push({
           id: crypto.randomUUID(),
-          kind: "tool_result",
-          text: "tool_result",
-          payload: result,
+          kind: "tool_call",
+          text: String(planned.name ?? "planned_tool"),
+          payload: planned,
           createdAt
         });
       }

@@ -2,6 +2,7 @@ import json
 import logging
 import uuid
 from datetime import datetime, timezone
+from time import perf_counter
 from typing import Any
 
 from sqlalchemy import desc, select
@@ -41,6 +42,7 @@ class TradingAgent:
     async def chat(self, client_id: uuid.UUID, message: str) -> dict[str, Any]:
         context = self.memory_store.get_or_create(client_id)
         if context.mode == "autonomous" and not self.settings.autonomous_enabled:
+            metadata = self._empty_tool_metadata()
             await self._audit(
                 client_id,
                 "autonomous_blocked",
@@ -50,6 +52,7 @@ class TradingAgent:
                 "mode": context.mode,
                 "message": "Autonomous mode is globally disabled by system policy.",
                 "executed": False,
+                **metadata,
             }
         context.message_history.append({"role": "user", "content": message})
         await self._save_memory(client_id, "user", message)
@@ -63,6 +66,12 @@ class TradingAgent:
         llm_decision = await self._decide(mode=mode, message=message, context=context, params=params)
         reasoning = llm_decision["reasoning"]
         proposed_trade = llm_decision.get("trade")
+        tool_metadata = {
+            "tool_trace_id": llm_decision.get("tool_trace_id", str(uuid.uuid4())),
+            "planned_tools": llm_decision.get("planned_tools", []),
+            "tool_calls": llm_decision.get("tool_calls", []),
+            "tool_results": llm_decision.get("tool_results", []),
+        }
 
         if mode == "confirmation":
             proposal = await self._create_proposal(client_id, proposed_trade, reasoning)
@@ -73,15 +82,16 @@ class TradingAgent:
                 "message": reasoning,
                 "proposal_id": proposal.id,
                 "proposal": proposal.trade_payload,
+                **tool_metadata,
             }
         else:
             if not proposed_trade:
                 await self._audit(client_id, "agent_decision_no_trade", {"reasoning": reasoning})
-                response = {"mode": mode, "message": reasoning, "executed": False}
+                response = {"mode": mode, "message": reasoning, "executed": False, **tool_metadata}
             else:
                 execution = await self._execute_trade(client_id, proposed_trade, reasoning, params)
                 context.last_action = f"trade:{execution.get('trade_id')}"
-                response = {"mode": mode, "message": reasoning, "execution": execution, "executed": True}
+                response = {"mode": mode, "message": reasoning, "execution": execution, "executed": True, **tool_metadata}
 
         context.message_history.append({"role": "assistant", "content": response["message"]})
         self.memory_store.update(context)
@@ -261,8 +271,20 @@ class TradingAgent:
         fallback_reasoning: str,
         fallback_trade: dict[str, Any] | None,
     ) -> dict[str, Any]:
+        tool_trace_id = str(uuid.uuid4())
+        planned_tools: list[dict[str, Any]] = []
+        tool_calls: list[dict[str, Any]] = []
+        tool_results: list[dict[str, Any]] = []
+
         if not self.settings.anthropic_api_key:
-            return {"reasoning": fallback_reasoning, "trade": fallback_trade}
+            return {
+                "reasoning": fallback_reasoning,
+                "trade": fallback_trade,
+                "tool_trace_id": tool_trace_id,
+                "planned_tools": planned_tools,
+                "tool_calls": tool_calls,
+                "tool_results": tool_results,
+            }
         try:
             from anthropic import AsyncAnthropic  # type: ignore
 
@@ -296,29 +318,88 @@ class TradingAgent:
                     return {
                         "reasoning": parsed.get("reasoning", fallback_reasoning),
                         "trade": parsed.get("trade", fallback_trade),
+                        "tool_trace_id": tool_trace_id,
+                        "planned_tools": planned_tools,
+                        "tool_calls": tool_calls,
+                        "tool_results": tool_results,
                     }
 
                 messages.append({"role": "assistant", "content": response.content})
-                tool_results = []
+                llm_tool_results = []
                 for tool_use in tool_uses:
                     name = tool_use.name
                     tool_input = tool_use.input
+                    started_at = datetime.now(timezone.utc)
+                    started_tick = perf_counter()
+                    planned_tools.append({"name": name, "input": tool_input})
                     if mode == "confirmation" and name == "submit_order":
                         result = {"error": "submit_order blocked in confirmation mode"}
                     else:
-                        result = await self._run_tool(context.client_id, name, tool_input)
+                        try:
+                            result = await self._run_tool(context.client_id, name, tool_input)
+                        except Exception as exc:  # noqa: BLE001
+                            result = {"error": str(exc)}
+                    completed_at = datetime.now(timezone.utc)
+                    duration_ms = int((perf_counter() - started_tick) * 1000)
+                    output_payload = result if isinstance(result, dict) else {"value": result}
+                    success = not (isinstance(output_payload.get("error"), str) and output_payload.get("error"))
+
+                    tool_calls.append(
+                        {
+                            "tool_use_id": tool_use.id,
+                            "name": name,
+                            "input": tool_input,
+                            "started_at": started_at,
+                            "completed_at": completed_at,
+                            "duration_ms": duration_ms,
+                        }
+                    )
                     tool_results.append(
+                        {
+                            "tool_use_id": tool_use.id,
+                            "name": name,
+                            "output": output_payload,
+                            "success": success,
+                            "error": output_payload.get("error") if not success else None,
+                            "started_at": started_at,
+                            "completed_at": completed_at,
+                            "duration_ms": duration_ms,
+                        }
+                    )
+                    llm_tool_results.append(
                         {
                             "type": "tool_result",
                             "tool_use_id": tool_use.id,
-                            "content": json.dumps(result, default=str),
+                            "content": json.dumps(output_payload, default=str),
                         }
                     )
-                messages.append({"role": "user", "content": tool_results})
-            return {"reasoning": fallback_reasoning, "trade": fallback_trade}
+                messages.append({"role": "user", "content": llm_tool_results})
+            return {
+                "reasoning": fallback_reasoning,
+                "trade": fallback_trade,
+                "tool_trace_id": tool_trace_id,
+                "planned_tools": planned_tools,
+                "tool_calls": tool_calls,
+                "tool_results": tool_results,
+            }
         except Exception as exc:  # noqa: BLE001
             logger.warning("LLM call failed, using fallback", extra={"error": str(exc)})
-            return {"reasoning": fallback_reasoning, "trade": fallback_trade}
+            return {
+                "reasoning": fallback_reasoning,
+                "trade": fallback_trade,
+                "tool_trace_id": tool_trace_id,
+                "planned_tools": planned_tools,
+                "tool_calls": tool_calls,
+                "tool_results": tool_results,
+            }
+
+    def _empty_tool_metadata(self) -> dict[str, Any]:
+        return {
+            "tool_trace_id": str(uuid.uuid4()),
+            "planned_tools": [],
+            "tool_calls": [],
+            "tool_results": [],
+        }
 
     def _tool_definitions(self) -> list[dict[str, Any]]:
         return [
