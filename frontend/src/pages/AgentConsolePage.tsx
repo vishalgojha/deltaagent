@@ -2,12 +2,16 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   approveProposal,
+  getHealth,
+  getRiskParameters,
   getStatus,
   getProposals,
   rejectProposal,
   sendChat,
-  setMode
+  setMode,
+  updateAgentParameters
 } from "../api/endpoints";
+import { getApiBaseUrl } from "../api/client";
 import type { ChatResponse } from "../types";
 import { useAgentStream } from "../hooks/useAgentStream";
 
@@ -49,6 +53,19 @@ type PersistedTimelineState = {
   runs: TimelineRun[];
   resolvedProposals: Record<number, "approved" | "rejected">;
   proposalRunEntries: Array<[number, string]>;
+};
+
+type LiveAgentStatus = {
+  mode?: string;
+  last_action?: string | null;
+  healthy?: boolean;
+  net_greeks?: Record<string, number>;
+};
+
+type LiveGreeks = {
+  net_greeks?: Record<string, number>;
+  positions?: Array<Record<string, unknown>>;
+  updated_at?: string;
 };
 
 const TIMELINE_STORAGE_VERSION = 1;
@@ -119,10 +136,17 @@ export function AgentConsolePage({ clientId, token }: Props) {
   const queryClient = useQueryClient();
   const [message, setMessage] = useState("");
   const [mode, setModeUi] = useState<"confirmation" | "autonomous">("confirmation");
+  const [decisionBackend, setDecisionBackendUi] = useState<"ollama" | "deterministic">("ollama");
   const [runs, setRuns] = useState<TimelineRun[]>([]);
   const [expandedToolItems, setExpandedToolItems] = useState<Record<string, boolean>>({});
   const [expandedWorkflowSteps, setExpandedWorkflowSteps] = useState<Record<string, boolean>>({});
   const [error, setError] = useState("");
+  const [showDebugStream, setShowDebugStream] = useState(false);
+  const [liveStatus, setLiveStatus] = useState<LiveAgentStatus | null>(null);
+  const [liveGreeks, setLiveGreeks] = useState<LiveGreeks | null>(null);
+  const [debugEvents, setDebugEvents] = useState<Array<{ id: string; text: string; payload?: Record<string, unknown>; createdAt: string }>>(
+    []
+  );
   const [resolvedProposals, setResolvedProposals] = useState<Record<number, "approved" | "rejected">>({});
   const proposalIdsSeen = useRef<Set<number>>(new Set());
   const proposalRunMap = useRef<Map<number, string>>(new Map());
@@ -141,6 +165,17 @@ export function AgentConsolePage({ clientId, token }: Props) {
   const statusQuery = useQuery({
     queryKey: ["agent-status", clientId],
     queryFn: () => getStatus(clientId)
+  });
+
+  const healthQuery = useQuery({
+    queryKey: ["api-health"],
+    queryFn: getHealth,
+    refetchInterval: 15000
+  });
+
+  const parametersQuery = useQuery({
+    queryKey: ["agent-parameters", clientId],
+    queryFn: () => getRiskParameters(clientId)
   });
 
   const pendingProposalIds = useMemo(
@@ -166,6 +201,9 @@ export function AgentConsolePage({ clientId, token }: Props) {
   useEffect(() => {
     setRuns([]);
     setResolvedProposals({});
+    setLiveStatus(null);
+    setLiveGreeks(null);
+    setDebugEvents([]);
     setExpandedToolItems({});
     setExpandedWorkflowSteps({});
     proposalIdsSeen.current = new Set();
@@ -215,6 +253,15 @@ export function AgentConsolePage({ clientId, token }: Props) {
     }
   }, [statusQuery.data?.mode]);
 
+  useEffect(() => {
+    const backendRaw = (parametersQuery.data?.risk_parameters as Record<string, unknown> | undefined)?.decision_backend;
+    if (backendRaw === "deterministic" || backendRaw === "ollama") {
+      setDecisionBackendUi(backendRaw);
+      return;
+    }
+    setDecisionBackendUi("ollama");
+  }, [parametersQuery.data?.risk_parameters]);
+
   const sendChatMutation = useMutation({
     mutationFn: (chatMessage: string) => sendChat(clientId, chatMessage)
   });
@@ -237,6 +284,14 @@ export function AgentConsolePage({ clientId, token }: Props) {
     mutationFn: (id: number) => rejectProposal(clientId, id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["proposals", clientId] });
+    }
+  });
+
+  const decisionBackendMutation = useMutation({
+    mutationFn: (nextBackend: "ollama" | "deterministic") =>
+      updateAgentParameters(clientId, { decision_backend: nextBackend }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["agent-parameters", clientId] });
     }
   });
 
@@ -378,14 +433,42 @@ export function AgentConsolePage({ clientId, token }: Props) {
     if (serialized === latestStatusRef.current) return;
     latestStatusRef.current = serialized;
     const eventType = typeof lastEvent.type === "string" ? lastEvent.type : "event";
+
+    if (eventType === "agent_status" && isRecord(lastEvent.data)) {
+      const eventPayload: Record<string, unknown> = lastEvent.data;
+      setLiveStatus(eventPayload);
+      if (showDebugStream) {
+        setDebugEvents((prev) =>
+          [{ id: crypto.randomUUID(), text: eventType, payload: eventPayload, createdAt: nowIso() }, ...prev].slice(0, 50)
+        );
+      }
+      return;
+    }
+    if (eventType === "greeks" && isRecord(lastEvent.data)) {
+      const eventPayload: Record<string, unknown> = lastEvent.data;
+      setLiveGreeks(eventPayload);
+      if (showDebugStream) {
+        setDebugEvents((prev) =>
+          [{ id: crypto.randomUUID(), text: eventType, payload: eventPayload, createdAt: nowIso() }, ...prev].slice(0, 50)
+        );
+      }
+      return;
+    }
+
+    if (showDebugStream) {
+      setDebugEvents((prev) =>
+        [{ id: crypto.randomUUID(), text: eventType, payload: isRecord(lastEvent.data) ? lastEvent.data : undefined, createdAt: nowIso() }, ...prev].slice(0, 50)
+      );
+    }
+
     appendSystemOutsideRun({
       id: crypto.randomUUID(),
       kind: "status",
       text: eventType,
-      payload: isRecord(lastEvent.data) ? lastEvent.data : lastEvent,
+      payload: isRecord(lastEvent.data) ? lastEvent.data : undefined,
       createdAt: nowIso()
     });
-  }, [lastEvent]);
+  }, [lastEvent, showDebugStream]);
 
   useEffect(() => {
     for (const proposal of proposalsQuery.data ?? []) {
@@ -457,6 +540,16 @@ export function AgentConsolePage({ clientId, token }: Props) {
     }
   }
 
+  async function onDecisionBackendChange(nextBackend: "ollama" | "deterministic") {
+    setError("");
+    try {
+      await decisionBackendMutation.mutateAsync(nextBackend);
+      setDecisionBackendUi(nextBackend);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Engine update failed");
+    }
+  }
+
   async function onApprove(id: number) {
     await approveMutation.mutateAsync(id);
     setResolvedProposals((prev) => ({ ...prev, [id]: "approved" }));
@@ -506,7 +599,46 @@ export function AgentConsolePage({ clientId, token }: Props) {
           </button>
           <button onClick={() => onModeChange("autonomous")}>Autonomous</button>
           <span className="muted">Current: {mode}</span>
+          <label>
+            Engine
+            <select
+              style={{ marginLeft: 8 }}
+              value={decisionBackend}
+              onChange={(e) => onDecisionBackendChange(e.target.value as "ollama" | "deterministic")}
+            >
+              <option value="ollama">Ollama (Default)</option>
+              <option value="deterministic">Deterministic Logic</option>
+            </select>
+          </label>
           <span className="muted">WS: {connected ? "connected" : "disconnected"}</span>
+          <label className="row" style={{ marginLeft: "auto" }}>
+            <input type="checkbox" checked={showDebugStream} onChange={(e) => setShowDebugStream(e.target.checked)} />
+            Debug stream
+          </label>
+        </div>
+        <div className="card" style={{ marginTop: 10, marginBottom: 0 }}>
+          <p style={{ margin: "0 0 6px 0", fontWeight: 700 }}>System Health</p>
+          <div className="row">
+            <span className="muted">API: {getApiBaseUrl()}</span>
+            <span className="muted">Backend: {healthQuery.isError ? "unreachable" : (healthQuery.data?.status ?? "checking...")}</span>
+            <span className="muted">Agent healthy: {String(liveStatus?.healthy ?? statusQuery.data?.healthy ?? "-")}</span>
+            <span className="muted">Mode: {liveStatus?.mode ?? statusQuery.data?.mode ?? mode}</span>
+            <span className="muted">WS: {connected ? "connected" : "disconnected"}</span>
+          </div>
+        </div>
+        <p className="muted" style={{ marginTop: 8, marginBottom: 0 }}>
+          Tip: For higher-quality reasoning, OpenAI or Anthropic models usually perform better than local models.
+        </p>
+        <div className="card" style={{ marginTop: 10, marginBottom: 0 }}>
+          <p style={{ margin: "0 0 6px 0", fontWeight: 700 }}>Live Status</p>
+          <div className="row">
+            <span className="muted">Mode: {liveStatus?.mode ?? mode}</span>
+            <span className="muted">Healthy: {String(liveStatus?.healthy ?? statusQuery.data?.healthy ?? "-")}</span>
+            <span className="muted">Last Action: {String(liveStatus?.last_action ?? statusQuery.data?.last_action ?? "none")}</span>
+          </div>
+          <p className="muted" style={{ margin: "6px 0 0 0" }}>
+            Net Greeks: {JSON.stringify(liveGreeks?.net_greeks ?? liveStatus?.net_greeks ?? statusQuery.data?.net_greeks ?? {})}
+          </p>
         </div>
         <form onSubmit={onSend} className="grid" style={{ marginTop: 12 }}>
           <textarea
@@ -601,7 +733,7 @@ export function AgentConsolePage({ clientId, token }: Props) {
           {toolStripItems.length === 0 && <p className="muted" style={{ margin: 0 }}>No tool calls in current run.</p>}
           <div className="row" style={{ alignItems: "flex-start" }}>
             {toolStripItems.map((item) => (
-              <div key={item.id} className="card" style={{ minWidth: 180, margin: 0 }}>
+              <div key={item.id} className="card" style={{ minWidth: 0, flex: "1 1 220px", margin: 0 }}>
                 <button
                   className="secondary"
                   type="button"
@@ -681,6 +813,20 @@ export function AgentConsolePage({ clientId, token }: Props) {
             </div>
           ))}
         </div>
+        {showDebugStream && (
+          <div style={{ marginTop: 12 }}>
+            <p style={{ margin: "0 0 6px 0", fontWeight: 700 }}>Debug Stream Events</p>
+            <div className="grid" style={{ maxHeight: 220, overflow: "auto" }}>
+              {debugEvents.length === 0 && <p className="muted">No stream events captured yet.</p>}
+              {debugEvents.map((event) => (
+                <div key={event.id} className="card" style={{ marginBottom: 2 }}>
+                  <p style={{ margin: "0 0 6px 0", fontWeight: 700 }}>{event.text}</p>
+                  {event.payload && <pre>{JSON.stringify(event.payload, null, 2)}</pre>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </section>
     </div>
   );

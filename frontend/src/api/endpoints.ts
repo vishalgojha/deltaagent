@@ -1,6 +1,7 @@
 import { api } from "./client";
 import type {
   AgentStatus,
+  ChatResponse,
   ClientOut,
   LoginResponse,
   Position,
@@ -17,6 +18,10 @@ export function login(email: string, password: string) {
     method: "POST",
     body: JSON.stringify({ email, password })
   });
+}
+
+export function getHealth() {
+  return api<{ status: string }>("/health");
 }
 
 export function onboardClient(payload: {
@@ -59,7 +64,7 @@ export function getProposals(clientId: string) {
 }
 
 export function sendChat(clientId: string, message: string) {
-  return api<Record<string, unknown>>(`/clients/${clientId}/agent/chat`, {
+  return api<ChatResponse>(`/clients/${clientId}/agent/chat`, {
     method: "POST",
     body: JSON.stringify({ message })
   });
@@ -82,6 +87,13 @@ export function updateRiskParameters(clientId: string, riskParameters: RiskParam
   return api<{ client_id: string; risk_parameters: RiskParameters }>(`/clients/${clientId}/agent/parameters`, {
     method: "POST",
     body: JSON.stringify({ risk_parameters: riskParameters })
+  });
+}
+
+export function updateAgentParameters(clientId: string, parameters: Record<string, unknown>) {
+  return api<{ client_id: string; risk_parameters: Record<string, unknown> }>(`/clients/${clientId}/agent/parameters`, {
+    method: "POST",
+    body: JSON.stringify({ risk_parameters: parameters })
   });
 }
 

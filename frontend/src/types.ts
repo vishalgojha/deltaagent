@@ -12,6 +12,39 @@ export type AgentStatus = {
   net_greeks: Record<string, number>;
 };
 
+export type ChatToolCall = {
+  tool_use_id?: string;
+  name?: string;
+  input?: Record<string, unknown>;
+  started_at?: string;
+  completed_at?: string;
+  duration_ms?: number;
+};
+
+export type ChatToolResult = {
+  tool_use_id?: string;
+  name?: string;
+  output?: Record<string, unknown>;
+  success?: boolean;
+  error?: string | null;
+  started_at?: string;
+  completed_at?: string;
+  duration_ms?: number;
+};
+
+export type ChatResponse = {
+  mode: string;
+  message: string;
+  executed?: boolean;
+  proposal_id?: number;
+  proposal?: Record<string, unknown>;
+  execution?: Record<string, unknown>;
+  tool_trace_id?: string;
+  planned_tools?: Array<Record<string, unknown>>;
+  tool_calls?: ChatToolCall[];
+  tool_results?: ChatToolResult[];
+};
+
 export type Position = {
   id: number;
   symbol: string;
