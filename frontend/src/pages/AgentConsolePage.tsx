@@ -41,6 +41,7 @@ type ToolStep = {
   input?: Record<string, unknown>;
   output?: Record<string, unknown>;
   status: ToolStepStatus;
+  durationMs?: number;
 };
 
 type PersistedTimelineState = {
@@ -80,7 +81,8 @@ function summarizeRunTools(run: TimelineRun | null): ToolStep[] {
         id: item.id,
         name: item.text,
         input: item.payload,
-        status: "queued"
+        status: "queued",
+        durationMs: typeof item.payload?.duration_ms === "number" ? item.payload.duration_ms : undefined
       });
       continue;
     }
@@ -90,12 +92,16 @@ function summarizeRunTools(run: TimelineRun | null): ToolStep[] {
       if (target) {
         target.output = item.payload;
         target.status = toolResultFailed(item.payload) ? "failed" : "completed";
+        if (typeof item.payload?.duration_ms === "number") {
+          target.durationMs = item.payload.duration_ms;
+        }
       } else {
         steps.push({
           id: item.id,
           name: "tool_result",
           output: item.payload,
-          status: toolResultFailed(item.payload) ? "failed" : "completed"
+          status: toolResultFailed(item.payload) ? "failed" : "completed",
+          durationMs: typeof item.payload?.duration_ms === "number" ? item.payload.duration_ms : undefined
         });
       }
     }
@@ -115,6 +121,7 @@ export function AgentConsolePage({ clientId, token }: Props) {
   const [mode, setModeUi] = useState<"confirmation" | "autonomous">("confirmation");
   const [runs, setRuns] = useState<TimelineRun[]>([]);
   const [expandedToolItems, setExpandedToolItems] = useState<Record<string, boolean>>({});
+  const [expandedWorkflowSteps, setExpandedWorkflowSteps] = useState<Record<string, boolean>>({});
   const [error, setError] = useState("");
   const [resolvedProposals, setResolvedProposals] = useState<Record<number, "approved" | "rejected">>({});
   const proposalIdsSeen = useRef<Set<number>>(new Set());
@@ -160,6 +167,7 @@ export function AgentConsolePage({ clientId, token }: Props) {
     setRuns([]);
     setResolvedProposals({});
     setExpandedToolItems({});
+    setExpandedWorkflowSteps({});
     proposalIdsSeen.current = new Set();
     proposalRunMap.current = new Map();
     activeRunIdRef.current = null;
@@ -481,6 +489,13 @@ export function AgentConsolePage({ clientId, token }: Props) {
     setMessage(prompt);
   }
 
+  function getStepDurationLabel(step: ToolStep): string | null {
+    if (typeof step.durationMs === "number") return `${step.durationMs} ms`;
+    if (step.input && typeof step.input.duration_ms === "number") return `${step.input.duration_ms} ms`;
+    if (step.output && typeof step.output.duration_ms === "number") return `${step.output.duration_ms} ms`;
+    return null;
+  }
+
   return (
     <div className="grid grid-2">
       <section className="card">
@@ -548,10 +563,29 @@ export function AgentConsolePage({ clientId, token }: Props) {
                     <p style={{ margin: 0, fontWeight: 700 }}>
                       Step {index + 1}: {step.name}
                     </p>
-                    <span className={`tool-step-status ${step.status}`}>{step.status}</span>
+                    <div className="row">
+                      {getStepDurationLabel(step) && <span className="tool-step-duration">{getStepDurationLabel(step)}</span>}
+                      <span className={`tool-step-status ${step.status}`}>{step.status}</span>
+                      <button
+                        type="button"
+                        className="secondary tool-step-toggle"
+                        onClick={() =>
+                          setExpandedWorkflowSteps((prev) => ({
+                            ...prev,
+                            [step.id]: !prev[step.id]
+                          }))
+                        }
+                      >
+                        {expandedWorkflowSteps[step.id] ? "Hide" : "Details"}
+                      </button>
+                    </div>
                   </div>
-                  {step.input && <pre style={{ marginTop: 8 }}>{JSON.stringify(step.input, null, 2)}</pre>}
-                  {step.output && <pre style={{ marginTop: 8 }}>{JSON.stringify(step.output, null, 2)}</pre>}
+                  {expandedWorkflowSteps[step.id] && (
+                    <div className="tool-step-details">
+                      {step.input && <pre style={{ marginTop: 8 }}>{JSON.stringify(step.input, null, 2)}</pre>}
+                      {step.output && <pre style={{ marginTop: 8 }}>{JSON.stringify(step.output, null, 2)}</pre>}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
