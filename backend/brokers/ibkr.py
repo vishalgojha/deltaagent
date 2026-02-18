@@ -27,6 +27,10 @@ class IBKRBroker(BrokerBase):
         "CL": "NYMEX",
         "GC": "COMEX",
     }
+    _EXCHANGE_ALIASES = {
+        "GLOBEX": "CME",
+        "NYM": "NYMEX",
+    }
 
     def __init__(self, credentials: dict | None = None) -> None:
         self._ib = None
@@ -35,6 +39,9 @@ class IBKRBroker(BrokerBase):
         self._stream_enabled = False
 
     async def connect(self) -> None:
+        self._connected = await self._connect_with_retry()
+
+    async def _connect_with_retry(self) -> bool:
         try:
             from ib_insync import IB  # type: ignore
         except Exception as exc:  # noqa: BLE001
@@ -43,7 +50,8 @@ class IBKRBroker(BrokerBase):
         host = self._credentials.get("host", cfg.ibkr_gateway_host)
         port = int(self._credentials.get("port", cfg.ibkr_gateway_port))
         client_id = int(self._credentials.get("client_id", 1))
-        self._ib = IB()
+        if self._ib is None:
+            self._ib = IB()
         retries = int(self._credentials.get("connect_retries", 3))
         base_backoff = float(self._credentials.get("connect_backoff_seconds", 0.5))
         ok = False
@@ -60,7 +68,7 @@ class IBKRBroker(BrokerBase):
                 delay = base_backoff * (2 ** (attempt - 1))
                 logger.warning(
                     "IBKR connect attempt failed",
-                    extra={"attempt": attempt, "retries": retries, "host": host, "port": port},
+                    extra={"attempt": attempt, "retries": retries, "host": host, "port": port, "client_id": client_id},
                 )
                 await asyncio.sleep(delay)
         if not ok:
@@ -72,14 +80,28 @@ class IBKRBroker(BrokerBase):
                     "port": port,
                     "client_id": client_id,
                     "retries": retries,
+                    "stage": "connect",
                     "last_error": str(last_error) if last_error else None,
                 },
             )
-        self._connected = True
+        return True
+
+    async def _ensure_connected(self) -> None:
+        if self._ib is None:
+            await self.connect()
+            return
+
+        is_connected = getattr(self._ib, "isConnected", None)
+        live_connected = bool(is_connected()) if callable(is_connected) else self._connected
+        if live_connected:
+            self._connected = True
+            return
+
+        logger.warning("IBKR session disconnected; attempting reconnect")
+        self._connected = await self._connect_with_retry()
 
     async def get_positions(self) -> list[dict[str, Any]]:
-        if not self._ib:
-            return []
+        await self._ensure_connected()
         items = self._ib.positions()
         positions: list[dict[str, Any]] = []
         for item in items:
@@ -113,7 +135,7 @@ class IBKRBroker(BrokerBase):
         return positions
 
     async def get_greeks(self, contract: dict[str, Any]) -> dict[str, float]:
-        self._require_connected()
+        await self._ensure_connected()
         ib_contract = self._build_contract(contract)
         tickers = await self._ib.reqTickersAsync(ib_contract)
         if not tickers:
@@ -121,7 +143,7 @@ class IBKRBroker(BrokerBase):
         return self._extract_greeks(tickers[0])
 
     async def get_options_chain(self, symbol: str, expiry: str | None = None) -> list[dict[str, Any]]:
-        self._require_connected()
+        await self._ensure_connected()
         try:
             params = await self._ib.reqSecDefOptParamsAsync(symbol, "", "FUT", 0)
         except Exception as exc:  # noqa: BLE001
@@ -164,7 +186,11 @@ class IBKRBroker(BrokerBase):
                     "currency": "USD",
                 }
             )
-            call_ticker, put_ticker = await self._ib.reqTickersAsync(call_contract, put_contract)
+            tickers = await self._ib.reqTickersAsync(call_contract, put_contract)
+            call_ticker = tickers[0] if len(tickers) >= 1 else None
+            put_ticker = tickers[1] if len(tickers) >= 2 else None
+            if call_ticker is None and put_ticker is None:
+                continue
             call_g = self._extract_greeks(call_ticker)
             put_g = self._extract_greeks(put_ticker)
             rows.append(
@@ -182,7 +208,7 @@ class IBKRBroker(BrokerBase):
         return rows
 
     async def get_market_data(self, symbol: str) -> dict[str, float]:
-        self._require_connected()
+        await self._ensure_connected()
         under_instrument = self._credentials.get("underlying_instrument", "IND")
         contract = self._build_contract(
             {
@@ -213,7 +239,7 @@ class IBKRBroker(BrokerBase):
         order_type: str,
         limit_price: float | None = None,
     ) -> BrokerOrderResult:
-        self._require_connected()
+        await self._ensure_connected()
         ib_contract = self._build_contract(contract)
         order = self._build_order(action=action, qty=qty, order_type=order_type, limit_price=limit_price)
         try:
@@ -238,7 +264,7 @@ class IBKRBroker(BrokerBase):
         )
 
     async def stream_greeks(self, callback: Callable[[dict[str, Any]], Any]) -> None:
-        self._require_connected()
+        await self._ensure_connected()
         self._stream_enabled = True
         await callback({"event": "stream_started", "broker": "ibkr"})
         while self._stream_enabled:
@@ -318,8 +344,11 @@ class IBKRBroker(BrokerBase):
         exchange = payload.get("exchange") or exchange_overrides.get(symbol)
         if not exchange:
             exchange = self._DEFAULT_EXCHANGE_BY_SYMBOL.get(symbol, self._credentials.get("exchange", "CME"))
+        exchange = self._EXCHANGE_ALIASES.get(str(exchange).upper(), str(exchange).upper())
         currency = payload.get("currency", self._credentials.get("currency", "USD"))
         expiry = payload.get("expiry") or self._credentials.get("underlying_expiry")
+        if expiry is not None:
+            expiry = self._normalize_expiry(str(expiry))
         right = str(payload.get("right", "C")).upper()
         if right in {"CALL", "C"}:
             right = "C"
@@ -337,6 +366,13 @@ class IBKRBroker(BrokerBase):
             "trading_class": payload.get("trading_class", self._credentials.get("trading_class")),
         }
 
+    @staticmethod
+    def _normalize_expiry(value: str) -> str:
+        normalized = "".join(ch for ch in value if ch.isdigit())
+        if len(normalized) in {6, 8}:
+            return normalized
+        return value
+
     def _build_order(self, action: str, qty: int, order_type: str, limit_price: float | None) -> Any:
         try:
             from ib_insync import LimitOrder, MarketOrder  # type: ignore
@@ -351,6 +387,8 @@ class IBKRBroker(BrokerBase):
 
     @staticmethod
     def _extract_greeks(ticker: Any) -> dict[str, float]:
+        if ticker is None:
+            return {"delta": 0.0, "gamma": 0.0, "theta": 0.0, "vega": 0.0}
         model = getattr(ticker, "modelGreeks", None)
         if model is None:
             return {"delta": 0.0, "gamma": 0.0, "theta": 0.0, "vega": 0.0}

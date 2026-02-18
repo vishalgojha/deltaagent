@@ -1,8 +1,10 @@
 import pytest
+from datetime import datetime, timedelta, timezone
 
 from backend.brokers.factory import build_broker
 from backend.brokers.ibkr import IBKRBroker
 from backend.brokers.mock import MockBroker
+from backend.brokers.base import BrokerOrderError
 from backend.brokers.phillip import PhillipBroker
 
 
@@ -83,6 +85,12 @@ class _FakeChain:
 
 
 class _FakeIB:
+    def __init__(self) -> None:
+        self.connected = True
+
+    def isConnected(self) -> bool:  # noqa: N802
+        return self.connected
+
     def positions(self):
         return [_FakePosition()]
 
@@ -202,6 +210,11 @@ class _FakeAsyncHTTPClient:
         return _FakeHTTPResponse(404, {}, text="not found")
 
 
+class _FailingAsyncHTTPClient:
+    async def request(self, method: str, url: str, data=None, json=None, params=None, headers=None):  # noqa: ANN001
+        raise RuntimeError("network down")
+
+
 @pytest.mark.asyncio
 async def test_phillip_auth_positions_and_order_mapping() -> None:
     broker = PhillipBroker({"client_id": "cid", "client_secret": "secret"})
@@ -248,6 +261,22 @@ async def test_phillip_retries_transient_position_errors() -> None:
     assert len(position_gets) >= 2
 
 
+@pytest.mark.asyncio
+async def test_phillip_retry_exhaustion_includes_failure_telemetry() -> None:
+    broker = PhillipBroker({"client_id": "cid", "client_secret": "secret", "request_retries": 2})
+    broker._http = _FailingAsyncHTTPClient()  # type: ignore[assignment]
+    broker._token = "token-123"
+    broker._token_expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
+
+    with pytest.raises(BrokerOrderError) as exc:
+        await broker.get_positions()
+
+    assert exc.value.retryable is True
+    assert exc.value.context["endpoint"] == "/positions"
+    assert exc.value.context["retries"] == 2
+    assert exc.value.context["last_error_type"] == "RuntimeError"
+
+
 def test_ibkr_contract_normalization_with_alias_and_exchange_override() -> None:
     broker = IBKRBroker({"exchange_overrides": {"YM": "CBOT"}})
     normalized = broker._normalize_contract_payload(
@@ -257,3 +286,58 @@ def test_ibkr_contract_normalization_with_alias_and_exchange_override() -> None:
     assert normalized["instrument"] == "FUT"
     assert normalized["exchange"] == "CBOT"
     assert normalized["right"] == "P"
+
+
+def test_ibkr_contract_normalization_maps_exchange_alias_and_expiry_digits() -> None:
+    broker = IBKRBroker()
+    normalized = broker._normalize_contract_payload(
+        {"symbol": "es", "instrument": "fop", "expiry": "2026-03-20", "exchange": "globex", "right": "call"}
+    )
+    assert normalized["exchange"] == "CME"
+    assert normalized["expiry"] == "20260320"
+    assert normalized["right"] == "C"
+
+
+class _FakeIBOptionsPartial(_FakeIB):
+    async def reqTickersAsync(self, *args):
+        if len(args) == 2:
+            return [_FakeTicker()]
+        return [_FakeTicker()]
+
+
+@pytest.mark.asyncio
+async def test_ibkr_options_chain_handles_partial_ticker_responses() -> None:
+    broker = IBKRBroker({"max_chain_quotes": 1})
+    broker._ib = _FakeIBOptionsPartial()
+    broker._connected = True
+    broker._build_contract = lambda payload: payload  # type: ignore[method-assign]
+
+    chain = await broker.get_options_chain("ES", "20260320")
+
+    assert len(chain) == 1
+    assert chain[0]["call_delta"] == pytest.approx(0.12)
+    assert chain[0]["put_delta"] == pytest.approx(0.0)
+
+
+@pytest.mark.asyncio
+async def test_ibkr_ensure_connected_reconnects_dropped_session() -> None:
+    broker = IBKRBroker()
+    fake_ib = _FakeIB()
+    fake_ib.connected = False
+    broker._ib = fake_ib
+    broker._connected = True
+
+    called = {"count": 0}
+
+    async def fake_connect_with_retry() -> bool:
+        called["count"] += 1
+        broker._ib = _FakeIB()
+        broker._ib.connected = True
+        return True
+
+    broker._connect_with_retry = fake_connect_with_retry  # type: ignore[method-assign]
+
+    await broker._ensure_connected()
+
+    assert called["count"] == 1
+    assert broker._connected is True

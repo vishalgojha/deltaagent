@@ -199,7 +199,14 @@ class PhillipBroker(BrokerBase):
                     delay = self._request_backoff_seconds * (2 ** (attempt - 1))
                     logger.warning(
                         "Phillip transient response; retrying",
-                        extra={"method": method, "path": path, "status": response.status_code, "attempt": attempt},
+                        extra={
+                            "method": method,
+                            "path": path,
+                            "status": response.status_code,
+                            "attempt": attempt,
+                            "retries": retries,
+                            "delay_seconds": delay,
+                        },
                     )
                     await asyncio.sleep(delay)
                     continue
@@ -207,12 +214,18 @@ class PhillipBroker(BrokerBase):
                     raise BrokerAuthError(
                         f"Phillip auth failed (status={response.status_code}, endpoint={path}, body={response.text})",
                         retryable=response.status_code in transient_statuses,
-                        context={"status": response.status_code, "endpoint": path},
+                        context={"status": response.status_code, "endpoint": path, "attempt": attempt, "retries": retries},
                     )
                 raise BrokerOrderError(
                     f"Phillip request failed (method={method.upper()}, endpoint={path}, status={response.status_code}, body={response.text})",
                     retryable=response.status_code in transient_statuses,
-                    context={"method": method.upper(), "endpoint": path, "status": response.status_code},
+                    context={
+                        "method": method.upper(),
+                        "endpoint": path,
+                        "status": response.status_code,
+                        "attempt": attempt,
+                        "retries": retries,
+                    },
                 )
             except (BrokerAuthError, BrokerOrderError):
                 raise
@@ -223,17 +236,36 @@ class PhillipBroker(BrokerBase):
                 delay = self._request_backoff_seconds * (2 ** (attempt - 1))
                 logger.warning(
                     "Phillip request error; retrying",
-                    extra={"method": method, "path": path, "attempt": attempt, "error": str(exc)},
+                    extra={
+                        "method": method,
+                        "path": path,
+                        "attempt": attempt,
+                        "retries": retries,
+                        "delay_seconds": delay,
+                        "error": str(exc),
+                        "error_type": type(exc).__name__,
+                    },
                 )
                 await asyncio.sleep(delay)
         if path == "/oauth/token":
             raise BrokerAuthError(
                 f"Phillip auth failed after retries: {last_error}",
                 retryable=True,
-                context={"endpoint": path, "retries": retries},
+                context={
+                    "endpoint": path,
+                    "retries": retries,
+                    "last_error": str(last_error) if last_error else None,
+                    "last_error_type": type(last_error).__name__ if last_error else None,
+                },
             )
         raise BrokerOrderError(
             f"Phillip request failed after retries (method={method.upper()}, endpoint={path}): {last_error}",
             retryable=True,
-            context={"method": method.upper(), "endpoint": path, "retries": retries},
+            context={
+                "method": method.upper(),
+                "endpoint": path,
+                "retries": retries,
+                "last_error": str(last_error) if last_error else None,
+                "last_error_type": type(last_error).__name__ if last_error else None,
+            },
         )
