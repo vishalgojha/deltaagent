@@ -37,18 +37,29 @@ class ChatRequest(BaseModel):
 
 
 class ToolCallEntry(BaseModel):
-    tool_name: str
+    tool_name: str | None = None
+    name: str | None = None
     tool_input: dict = Field(default_factory=dict)
+    input: dict = Field(default_factory=dict)
+    tool_use_id: str | None = None
     started_at: datetime | None = None
     completed_at: datetime | None = None
     status: str = "completed"
+    duration_ms: float | None = None
 
 
 class ToolResultEntry(BaseModel):
-    tool_name: str
+    tool_name: str | None = None
+    name: str | None = None
+    tool_use_id: str | None = None
     ok: bool = True
+    success: bool | None = None
     result: dict | list | str | float | int | None = None
+    output: dict | list | str | float | int | None = None
     error: str | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    duration_ms: float | None = None
 
 
 class ChatResponse(BaseModel):
@@ -59,7 +70,7 @@ class ChatResponse(BaseModel):
     proposal: dict | None = None
     execution: dict | None = None
     tool_trace_id: str | None = None
-    planned_tools: list[str] = Field(default_factory=list)
+    planned_tools: list[dict | str] = Field(default_factory=list)
     tool_calls: list[ToolCallEntry] = Field(default_factory=list)
     tool_results: list[ToolResultEntry] = Field(default_factory=list)
     latency_ms: float | None = None

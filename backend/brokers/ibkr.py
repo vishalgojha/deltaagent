@@ -28,6 +28,11 @@ class IBKRBroker(BrokerBase):
         "CL": "NYMEX",
         "GC": "COMEX",
     }
+    _EXCHANGE_ALIASES = {
+        "GLOBEX": "CME",
+        "CME_GLOBEX": "CME",
+        "NYM": "NYMEX",
+    }
 
     def __init__(self, credentials: dict | None = None) -> None:
         self._ib = None
@@ -47,23 +52,7 @@ class IBKRBroker(BrokerBase):
         self._ib = IB()
         retries = int(self._credentials.get("connect_retries", 3))
         base_backoff = float(self._credentials.get("connect_backoff_seconds", 0.5))
-        ok = False
-        last_error: Exception | None = None
-        for attempt in range(1, retries + 1):
-            try:
-                ok = await self._ib.connectAsync(host, port, clientId=client_id)
-            except Exception as exc:  # noqa: BLE001
-                last_error = exc
-                ok = False
-            if ok:
-                break
-            if attempt < retries:
-                delay = base_backoff * (2 ** (attempt - 1))
-                logger.warning(
-                    "IBKR connect attempt failed",
-                    extra={"attempt": attempt, "retries": retries, "host": host, "port": port},
-                )
-                await asyncio.sleep(delay)
+        ok = await self._connect_with_retry()
         if not ok:
             raise BrokerConnectionError(
                 "Failed to connect to IBKR gateway",
@@ -73,10 +62,11 @@ class IBKRBroker(BrokerBase):
                     "port": port,
                     "client_id": client_id,
                     "retries": retries,
-                    "last_error": str(last_error) if last_error else None,
+                    "last_error": "",
                 },
             )
         self._connected = True
+        self._configure_market_data_type()
 
     async def get_positions(self) -> list[dict[str, Any]]:
         if not self._ib:
@@ -114,7 +104,7 @@ class IBKRBroker(BrokerBase):
         return positions
 
     async def get_greeks(self, contract: dict[str, Any]) -> dict[str, float]:
-        self._require_connected()
+        await self._ensure_connected()
         ib_contract = self._build_contract(contract)
         tickers = await self._ib.reqTickersAsync(ib_contract)
         if not tickers:
@@ -122,7 +112,7 @@ class IBKRBroker(BrokerBase):
         return self._extract_greeks(tickers[0])
 
     async def get_options_chain(self, symbol: str, expiry: str | None = None) -> list[dict[str, Any]]:
-        self._require_connected()
+        await self._ensure_connected()
         try:
             params = await self._ib.reqSecDefOptParamsAsync(symbol, "", "FUT", 0)
         except Exception as exc:  # noqa: BLE001
@@ -135,7 +125,7 @@ class IBKRBroker(BrokerBase):
             return []
         chain = params[0]
         expirations = sorted(list(chain.expirations))
-        target_expiries = [expiry] if expiry else expirations[: min(len(expirations), 3)]
+        target_expiries = [self._pick_target_expiry(expirations, expiry)] if expiry else expirations[: min(len(expirations), 3)]
         if not target_expiries:
             return []
         strikes = sorted([float(s) for s in chain.strikes])
@@ -170,7 +160,9 @@ class IBKRBroker(BrokerBase):
                         "multiplier": getattr(chain, "multiplier", None),
                     }
                 )
-                call_ticker, put_ticker = await self._ib.reqTickersAsync(call_contract, put_contract)
+                tickers = await self._ib.reqTickersAsync(call_contract, put_contract)
+                call_ticker = tickers[0] if len(tickers) > 0 else None
+                put_ticker = tickers[1] if len(tickers) > 1 else None
                 call_g = self._extract_greeks(call_ticker)
                 put_g = self._extract_greeks(put_ticker)
                 call_bid = self._safe_float(getattr(call_ticker, "bid", 0.0))
@@ -201,7 +193,7 @@ class IBKRBroker(BrokerBase):
         return rows
 
     async def get_market_data(self, symbol: str) -> dict[str, float]:
-        self._require_connected()
+        await self._ensure_connected()
         under_instrument = self._credentials.get("underlying_instrument", "IND")
         contract = self._build_contract(
             {
@@ -232,7 +224,7 @@ class IBKRBroker(BrokerBase):
         order_type: str,
         limit_price: float | None = None,
     ) -> BrokerOrderResult:
-        self._require_connected()
+        await self._ensure_connected()
         ib_contract = self._build_contract(contract)
         order = self._build_order(action=action, qty=qty, order_type=order_type, limit_price=limit_price)
         try:
@@ -257,7 +249,7 @@ class IBKRBroker(BrokerBase):
         )
 
     async def stream_greeks(self, callback: Callable[[dict[str, Any]], Any]) -> None:
-        self._require_connected()
+        await self._ensure_connected()
         self._stream_enabled = True
         await callback({"event": "stream_started", "broker": "ibkr"})
         while self._stream_enabled:
@@ -287,7 +279,7 @@ class IBKRBroker(BrokerBase):
         limit_price: float | None = None,
         action: str = "BUY",
     ) -> dict[str, Any]:
-        self._require_connected()
+        await self._ensure_connected()
         try:
             from ib_insync import ComboLeg, Contract  # type: ignore
         except Exception as exc:  # noqa: BLE001
@@ -404,8 +396,11 @@ class IBKRBroker(BrokerBase):
         exchange = payload.get("exchange") or exchange_overrides.get(symbol)
         if not exchange:
             exchange = self._DEFAULT_EXCHANGE_BY_SYMBOL.get(symbol, self._credentials.get("exchange", "CME"))
+        exchange = self._EXCHANGE_ALIASES.get(str(exchange).upper(), str(exchange).upper())
         currency = payload.get("currency", self._credentials.get("currency", "USD"))
         expiry = payload.get("expiry") or self._credentials.get("underlying_expiry")
+        if isinstance(expiry, str):
+            expiry = expiry.replace("-", "")
         right = str(payload.get("right", "C")).upper()
         if right in {"CALL", "C"}:
             right = "C"
@@ -422,6 +417,59 @@ class IBKRBroker(BrokerBase):
             "multiplier": payload.get("multiplier", self._credentials.get("multiplier")),
             "trading_class": payload.get("trading_class", self._credentials.get("trading_class")),
         }
+
+    async def _connect_with_retry(self) -> bool:
+        cfg = get_settings()
+        host = self._credentials.get("host", cfg.ibkr_gateway_host)
+        port = int(self._credentials.get("port", cfg.ibkr_gateway_port))
+        client_id = int(self._credentials.get("client_id", 1))
+        retries = int(self._credentials.get("connect_retries", 3))
+        base_backoff = float(self._credentials.get("connect_backoff_seconds", 0.5))
+        ok = False
+        for attempt in range(1, retries + 1):
+            try:
+                ok = await self._ib.connectAsync(host, port, clientId=client_id)
+            except Exception:  # noqa: BLE001
+                ok = False
+            if ok:
+                return True
+            if attempt < retries:
+                await asyncio.sleep(base_backoff * (2 ** (attempt - 1)))
+        return False
+
+    async def _ensure_connected(self) -> None:
+        is_connected = bool(self._ib and getattr(self._ib, "isConnected", lambda: False)())
+        if self._connected and is_connected:
+            return
+        ok = await self._connect_with_retry()
+        if not ok:
+            raise BrokerConnectionError("Failed to connect to IBKR gateway", retryable=True)
+        self._connected = True
+        self._configure_market_data_type()
+
+    def _configure_market_data_type(self) -> None:
+        if not self._ib:
+            return
+        if bool(self._credentials.get("delayed_market_data", False)):
+            try:
+                self._ib.reqMarketDataType(3)
+            except Exception:  # noqa: BLE001
+                logger.warning("Failed to enable delayed market data type for IBKR")
+
+    @staticmethod
+    def _pick_target_expiry(expirations: list[str], requested: str) -> str:
+        if not expirations:
+            return requested
+        try:
+            target = datetime.strptime(requested, "%Y%m%d")
+            parsed = []
+            for exp in expirations:
+                fmt = "%Y%m%d" if len(exp) == 8 else "%Y%m"
+                parsed.append((exp, datetime.strptime(exp, fmt)))
+            parsed.sort(key=lambda item: abs((item[1] - target).days))
+            return parsed[0][0]
+        except Exception:  # noqa: BLE001
+            return expirations[0]
 
     def _build_order(self, action: str, qty: int, order_type: str, limit_price: float | None) -> Any:
         try:
