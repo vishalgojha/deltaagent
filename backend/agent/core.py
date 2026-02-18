@@ -562,6 +562,8 @@ class TradingAgent:
                 tool_trace_id=tool_trace_id,
             )
             if ollama_response is not None:
+                if fallback_trade is not None and not self._is_executable_trade(ollama_response.get("trade")):
+                    ollama_response["trade"] = fallback_trade
                 return ollama_response
 
         if not self.settings.anthropic_api_key:
@@ -604,7 +606,7 @@ class TradingAgent:
                     text = "\n".join(text_chunks).strip()
                     parsed = json.loads(text) if text.startswith("{") else {}
                     parsed_trade = parsed.get("trade") if "trade" in parsed else fallback_trade
-                    if parsed_trade is None and fallback_trade is not None:
+                    if not self._is_executable_trade(parsed_trade) and fallback_trade is not None:
                         parsed_trade = fallback_trade
                     return {
                         "reasoning": parsed.get("reasoning", fallback_reasoning),
@@ -734,7 +736,7 @@ class TradingAgent:
                 return None
             parsed = json.loads(content)
             parsed_trade = parsed.get("trade") if "trade" in parsed else fallback_trade
-            if parsed_trade is None and fallback_trade is not None:
+            if not self._is_executable_trade(parsed_trade) and fallback_trade is not None:
                 parsed_trade = fallback_trade
             return {
                 "reasoning": parsed.get("reasoning", fallback_reasoning),
@@ -755,6 +757,13 @@ class TradingAgent:
             "tool_calls": [],
             "tool_results": [],
         }
+
+    @staticmethod
+    def _is_executable_trade(trade: Any) -> bool:
+        if not isinstance(trade, dict):
+            return False
+        required = ("action", "symbol", "qty")
+        return all(key in trade and trade.get(key) not in (None, "") for key in required)
 
     def _tool_definitions(self) -> list[dict[str, Any]]:
         return [
