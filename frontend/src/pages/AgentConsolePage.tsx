@@ -32,6 +32,16 @@ type TimelineRun = {
   createdAt: string;
 };
 
+type ToolStepStatus = "queued" | "running" | "completed" | "failed";
+
+type ToolStep = {
+  id: string;
+  name: string;
+  input?: Record<string, unknown>;
+  output?: Record<string, unknown>;
+  status: ToolStepStatus;
+};
+
 type PersistedTimelineState = {
   version: number;
   runs: TimelineRun[];
@@ -51,6 +61,51 @@ function nowIso(): string {
 
 function storageKey(clientId: string): string {
   return `ta_agent_timeline_${clientId}`;
+}
+
+function toolResultFailed(payload?: Record<string, unknown>): boolean {
+  if (!payload) return false;
+  if (payload.success === false) return true;
+  return typeof payload.error === "string" && payload.error.length > 0;
+}
+
+function summarizeRunTools(run: TimelineRun | null): ToolStep[] {
+  if (!run) return [];
+
+  const steps: ToolStep[] = [];
+  for (const item of run.items) {
+    if (item.kind === "tool_call") {
+      steps.push({
+        id: item.id,
+        name: item.text,
+        input: item.payload,
+        status: "queued"
+      });
+      continue;
+    }
+
+    if (item.kind === "tool_result") {
+      const target = steps.find((step) => step.status === "queued" || step.status === "running");
+      if (target) {
+        target.output = item.payload;
+        target.status = toolResultFailed(item.payload) ? "failed" : "completed";
+      } else {
+        steps.push({
+          id: item.id,
+          name: "tool_result",
+          output: item.payload,
+          status: toolResultFailed(item.payload) ? "failed" : "completed"
+        });
+      }
+    }
+  }
+
+  if (run.status === "running") {
+    const firstQueued = steps.find((step) => step.status === "queued");
+    if (firstQueued) firstQueued.status = "running";
+  }
+
+  return steps;
 }
 
 export function AgentConsolePage({ clientId, token }: Props) {
@@ -88,6 +143,15 @@ export function AgentConsolePage({ clientId, token }: Props) {
   const currentRun = runs[0] ?? null;
   const toolStripItems = useMemo(
     () => (currentRun?.items ?? []).filter((item) => item.kind === "tool_call" || item.kind === "tool_result").slice(-8),
+    [currentRun]
+  );
+  const currentRunToolSteps = useMemo(() => summarizeRunTools(currentRun), [currentRun]);
+  const currentRunHasProposal = useMemo(
+    () => (currentRun?.items ?? []).some((item) => item.kind === "proposal"),
+    [currentRun]
+  );
+  const currentRunHasAssistantText = useMemo(
+    () => (currentRun?.items ?? []).some((item) => item.kind === "assistant"),
     [currentRun]
   );
 
@@ -380,6 +444,10 @@ export function AgentConsolePage({ clientId, token }: Props) {
     else appendSystemOutsideRun(item);
   }
 
+  function injectPrompt(prompt: string) {
+    setMessage(prompt);
+  }
+
   return (
     <div className="grid grid-2">
       <section className="card">
@@ -401,6 +469,66 @@ export function AgentConsolePage({ clientId, token }: Props) {
           />
           <button type="submit">Send</button>
         </form>
+        <div className="row" style={{ marginTop: 6 }}>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => injectPrompt("Hedge portfolio delta to near neutral with minimum slippage.")}
+          >
+            Delta Hedge
+          </button>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => injectPrompt("Check exposure and propose a low-risk rebalance for open positions.")}
+          >
+            Rebalance
+          </button>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => injectPrompt("Summarize current risk posture and recommend actions for next 30 minutes.")}
+          >
+            Risk Summary
+          </button>
+        </div>
+
+        <div className="agent-flow" style={{ marginTop: 14 }}>
+          <div className="agent-flow-head">
+            <p className="agent-flow-title">Tool Calling Workflow</p>
+            <p className="muted" style={{ margin: 0 }}>
+              {currentRun ? `Current Run: ${currentRun.title}` : "No active run"}
+            </p>
+          </div>
+          <div className="agent-stage-row">
+            <span className={`agent-stage ${currentRun ? "active" : ""}`}>Intent</span>
+            <span className={`agent-stage ${currentRunHasAssistantText ? "active" : ""}`}>Plan</span>
+            <span className={`agent-stage ${currentRunToolSteps.length > 0 ? "active" : ""}`}>Tool Calls</span>
+            <span className={`agent-stage ${currentRunHasProposal ? "active" : ""}`}>Decision</span>
+            <span className={`agent-stage ${currentRun?.status === "completed" ? "active" : ""}`}>Complete</span>
+          </div>
+          {currentRunToolSteps.length > 0 ? (
+            <div className="grid" style={{ marginTop: 8 }}>
+              {currentRunToolSteps.map((step, index) => (
+                <div key={step.id} className="tool-step-card">
+                  <div className="row" style={{ justifyContent: "space-between" }}>
+                    <p style={{ margin: 0, fontWeight: 700 }}>
+                      Step {index + 1}: {step.name}
+                    </p>
+                    <span className={`tool-step-status ${step.status}`}>{step.status}</span>
+                  </div>
+                  {step.input && <pre style={{ marginTop: 8 }}>{JSON.stringify(step.input, null, 2)}</pre>}
+                  {step.output && <pre style={{ marginTop: 8 }}>{JSON.stringify(step.output, null, 2)}</pre>}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="muted" style={{ marginTop: 8 }}>
+              Start a request to see planned and executed tool steps.
+            </p>
+          )}
+        </div>
+
         <div style={{ marginTop: 12 }}>
           <p style={{ margin: "0 0 6px 0", fontWeight: 700 }}>Tool Execution</p>
           {toolStripItems.length === 0 && <p className="muted" style={{ margin: 0 }}>No tool calls in current run.</p>}
