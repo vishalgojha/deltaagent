@@ -154,3 +154,41 @@ class StrategyExecution(Base):
     avg_fill_price: Mapped[float | None] = mapped_column(Float, nullable=True)
     execution_timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
     payload: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class Instrument(Base):
+    __tablename__ = "instruments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    symbol: Mapped[str] = mapped_column(String(32), index=True)
+    asset_class: Mapped[str] = mapped_column(String(24), index=True)
+    exchange: Mapped[str] = mapped_column(String(32))
+    currency: Mapped[str] = mapped_column(String(12))
+    multiplier: Mapped[float | None] = mapped_column(Float, nullable=True)
+    tick_size: Mapped[float | None] = mapped_column(Float, nullable=True)
+    contract_rules: Mapped[dict] = mapped_column(JSON, default=dict)
+    aliases: Mapped[list] = mapped_column(JSON, default=list)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class StrategyProfile(Base):
+    __tablename__ = "strategy_profiles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    strategy_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(128))
+    description: Mapped[str] = mapped_column(Text, default="")
+    allowed_asset_classes: Mapped[list] = mapped_column(JSON, default=list)
+    allowed_symbols: Mapped[list] = mapped_column(JSON, default=list)
+    max_legs: Mapped[int] = mapped_column(Integer, default=4)
+    require_defined_risk: Mapped[bool] = mapped_column(Boolean, default=True)
+    tier_allowlist: Mapped[list] = mapped_column(JSON, default=list)
+    entry_rules: Mapped[dict] = mapped_column(JSON, default=dict)
+    exit_rules: Mapped[dict] = mapped_column(JSON, default=dict)
+    risk_template: Mapped[dict] = mapped_column(JSON, default=dict)
+    execution_template: Mapped[dict] = mapped_column(JSON, default=dict)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
