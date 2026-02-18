@@ -2,11 +2,25 @@ const TOKEN_KEY = "ta_token";
 const CLIENT_KEY = "ta_client_id";
 const SESSION_EVENT = "ta:session-updated";
 
+export type Session = {
+  token: string;
+  clientId: string;
+};
+
 type SessionListener = () => void;
 const listeners = new Set<SessionListener>();
+let cachedSession: Session = { token: "", clientId: "" };
 
 function emitSessionUpdate() {
+  cachedSession = readSession();
   listeners.forEach((listener) => listener());
+}
+
+function readSession(): Session {
+  return {
+    token: localStorage.getItem(TOKEN_KEY) ?? "",
+    clientId: localStorage.getItem(CLIENT_KEY) ?? ""
+  };
 }
 
 if (typeof window !== "undefined") {
@@ -17,10 +31,12 @@ if (typeof window !== "undefined") {
 }
 
 export function getSession() {
-  return {
-    token: localStorage.getItem(TOKEN_KEY) ?? "",
-    clientId: localStorage.getItem(CLIENT_KEY) ?? ""
-  };
+  const next = readSession();
+  if (cachedSession.token === next.token && cachedSession.clientId === next.clientId) {
+    return cachedSession;
+  }
+  cachedSession = next;
+  return cachedSession;
 }
 
 export function subscribeSession(listener: SessionListener) {

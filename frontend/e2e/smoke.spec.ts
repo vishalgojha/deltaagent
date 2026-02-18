@@ -1,6 +1,16 @@
 import { expect, test } from "@playwright/test";
 
 test("login -> chat proposal -> approve/reject", async ({ page }) => {
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => {
+    pageErrors.push(error.message);
+  });
+  page.on("console", (msg) => {
+    if (msg.type() === "error") {
+      pageErrors.push(msg.text());
+    }
+  });
+
   let nextProposalId = 1;
   const proposals: Array<{
     id: number;
@@ -142,6 +152,7 @@ test("login -> chat proposal -> approve/reject", async ({ page }) => {
   await page.getByRole("button", { name: "Sign in" }).click();
 
   await expect(page).toHaveURL(/\/dashboard$/);
+  expect(pageErrors, `Browser errors on dashboard: ${pageErrors.join(" | ")}`).toEqual([]);
   await page.getByRole("link", { name: "Agent Console" }).click();
   await expect(page).toHaveURL(/\/agent$/);
 
