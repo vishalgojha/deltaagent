@@ -1,84 +1,102 @@
 # Handoff
 
-## Current Status
+## Current Baseline
 
-- Backend core is implemented and connected end-to-end.
-- Test suite is passing (`10 passed` reported by you).
-- Frontend step-2 scaffold is added (`frontend/`): login, onboarding, dashboard, agent console, websocket feed.
-- Multi-tenant credential isolation is implemented (encrypted at rest, decrypted per client session).
-- IBKR adapter is no longer a placeholder path (contracts, orders, quotes/greeks, chain, stream loop).
-- Phillip adapter is covered with mocked integration tests.
-- Global autonomous kill switch is enforced (`AUTONOMOUS_ENABLED`).
-- Readiness endpoint exists: `GET /health/ready` (DB + Redis + broker reachability checks).
-- Alembic baseline migration scaffold has been added.
-- CORS is enabled via `CORS_ORIGINS`.
+- Branch: `main`
+- Stable tag: `v0.1.0`
+- Tag commit: `6124c8f` (CI green checkpoint)
+- Latest fixes after tag are also on `main` (CI import + flake fixes).
+- Current local test status: `39 passed`.
 
-## Files Added/Updated In Latest Step
+## What Is Working Now
 
-- `backend/config.py`
-- `backend/main.py`
-- `.env.example`
-- `README.md`
-- `HANDOFF.md`
-- `frontend/*`
+- Backend agent flow is end-to-end:
+  - `confirmation` mode creates proposals.
+  - `approve/reject` executes or drops proposals.
+  - `autonomous` mode is guarded by `AUTONOMOUS_ENABLED`.
+- Broker layer:
+  - IBKR adapter has contract normalization, chain fetch, market data mode config, reconnect helpers, and combo order support.
+  - Phillip adapter is covered by mocked tests.
+  - Mock broker is only for tests/dev (`USE_MOCK_BROKER=true`).
+- Multi-tenant/session basics:
+  - JWT auth + client scoping.
+  - Encrypted broker credentials vault.
+  - client-scoped state/memory.
+- Reference catalog support added:
+  - instruments + strategy profiles models/schemas/routes exist.
+- Frontend has:
+  - login-first flow.
+  - onboarding and broker reconnect UI with field-based IBKR form (not raw JSON-only).
+  - agent console improvements (tool trace, API status/health indicators, engine selector).
 
-## Environment Flags (Important)
+## Important Recent Fixes
 
-- `USE_MOCK_BROKER=true|false`
-- `AUTONOMOUS_ENABLED=false` (recommended until paper-trade validation)
-- `AUTO_CREATE_TABLES=true` (dev only)
-- `CORS_ORIGINS=http://localhost:3000,http://localhost:5173`
+- CI import failures resolved:
+  - Added missing ORM models in `backend/db/models.py`:
+    - `Instrument`
+    - `StrategyProfile`
+- Chat/API schema compatibility fixed:
+  - `ChatResponse` and tool-trace payload fields aligned for tests.
+- IBKR compatibility helpers restored for tests/runtime:
+  - `_pick_target_expiry`
+  - `_ensure_connected`
+  - delayed market data type configuration
+  - exchange alias + expiry normalization
+  - partial ticker response handling in options chain
+- Proposal-creation flake fixed:
+  - If model output returns invalid/empty trade, deterministic fallback trade is preserved.
 
-## Runbook (Backend)
+## Runbook
 
-1. Activate venv and install:
-- `python -m pip install -r requirements.txt`
+1. Start infra:
+- `docker compose up -d postgres redis`
 
-2. Migrate (recommended path):
-- `alembic -c backend/db/alembic.ini upgrade head`
+2. Backend:
+- `.\.venv\Scripts\python.exe -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload`
 
-3. Start API:
-- `uvicorn backend.main:app --reload`
+3. Frontend:
+- `cd frontend`
+- `npm install`
+- `npm run dev`
 
-4. Verify health:
-- `GET /health`
-- `GET /health/ready`
+4. Validate API routes:
+- `http://localhost:8000/openapi.json`
 
 5. Run tests:
-- `python -m pytest backend/tests -q`
+- `.\.venv\Scripts\python.exe -m pytest -q`
 
-## Frontend Integration Contract (Step-by-Step)
+## Environment Notes
 
-1. Login
-- `POST /auth/login` -> keep `access_token`, `client_id`
+- CORS should include frontend origin:
+  - `CORS_ORIGINS=["http://localhost:3000","http://localhost:5173","http://127.0.0.1:5173"]`
+- Local docker ports in this setup:
+  - Postgres `5433`
+  - Redis `6380`
+- Suggested local `.env` DB/Redis:
+  - `DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5433/trading`
+  - `REDIS_URL=redis://localhost:6380/0`
+- IBKR host:
+  - If backend runs on host: usually `localhost`.
+  - If backend runs in docker: often `host.docker.internal`.
 
-2. Use bearer token for all REST calls
-- Header: `Authorization: Bearer <token>`
+## Pending Backlog (High-Level)
 
-3. Dashboard data
-- `GET /clients/{id}/positions`
-- `GET /clients/{id}/trades`
-- `GET /clients/{id}/agent/status`
+1. Frontend state hardening:
+- move remaining fetch state to TanStack Query
+- central session/auth guard and stronger error boundaries
 
-4. Agent console actions
-- `POST /clients/{id}/agent/chat`
-- `POST /clients/{id}/agent/mode`
-- `POST /clients/{id}/agent/parameters`
-- `POST /clients/{id}/agent/approve/{trade_id}`
-- `POST /clients/{id}/agent/reject/{trade_id}`
+2. Frontend tests:
+- unit tests for login/onboarding/proposal/ws flows
+- Playwright smoke path: login -> proposal -> approve/reject
 
-5. Realtime updates
-- `WS /clients/{id}/stream?token=<jwt>`
+3. Backend safety/DB hardening:
+- global emergency trading halt endpoint finalization + audit checks
+- production-grade Postgres RLS policies (keep app-level tenant checks too)
 
-## Recommended Next Implementation Steps
+4. Broker production tuning:
+- IBKR/Phillip edge-case mappings, reconnect telemetry, market-data handling refinement
 
-1. Add risk parameter editor and guardrails UI.
-2. Add broker reconnect form on settings page.
-3. Add contract tests that validate frontend payload schemas against backend responses.
-4. Add a global emergency trading halt endpoint (`/admin/trading-halt`) with audit trail.
-5. Add production RLS policies at DB level (currently enforced in application layer).
+## Known Caveats
 
-## Known Gaps
-
-- IBKR/Phillip live APIs still need environment-specific tuning (market data permissions, exact exchange/contract mappings).
-- Alembic workflow is scaffolded; future schema changes need proper generated revisions.
+- CI warning from `passlib`/`crypt` is currently non-fatal on Python 3.11.
+- `Ollama call failed, falling back` in CI is expected when Ollama is not running; fallback path is now deterministic.
