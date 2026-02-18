@@ -148,6 +148,42 @@ class ClientOut(BaseModel):
     created_at: datetime
 
 
+class InstrumentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    symbol: str
+    asset_class: str
+    exchange: str
+    currency: str
+    multiplier: float | None
+    tick_size: float | None
+    contract_rules: dict
+    aliases: list
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class StrategyProfileOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    strategy_id: str
+    name: str
+    description: str
+    allowed_asset_classes: list
+    allowed_symbols: list
+    max_legs: int
+    require_defined_risk: bool
+    tier_allowlist: list
+    entry_rules: dict
+    exit_rules: dict
+    risk_template: dict
+    execution_template: dict
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
 class StrategyTemplateCreateRequest(BaseModel):
     name: str
     strategy_type: Literal["butterfly", "iron_fly", "broken_wing_butterfly"]
