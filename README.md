@@ -113,6 +113,12 @@ pytest backend/tests -q
 Broker-related API failures now return structured `detail` payloads for telemetry:
 `{"type":"broker_error","operation":"...","broker":"ibkr|phillip","code":"...","message":"...","retryable":true|false,"context":{...}}`.
 
+## Runbooks
+
+- Emergency halt operations: `docs/runbooks/emergency-halt.md`
+- Broker reconnect/failure triage: `docs/runbooks/broker-failure-triage.md`
+- Postgres RLS tenant debugging: `docs/runbooks/rls-tenant-debugging.md`
+
 ## Migrations (Alembic)
 
 Config: `backend/db/alembic.ini`
