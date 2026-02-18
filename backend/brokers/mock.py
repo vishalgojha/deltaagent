@@ -93,3 +93,25 @@ class MockBroker(BrokerBase):
                 }
             )
             await asyncio.sleep(1.0)
+
+    async def submit_combo_order(
+        self,
+        symbol: str,
+        legs: list[dict[str, Any]],
+        qty: int,
+        order_type: str,
+        limit_price: float | None = None,
+        action: str = "BUY",
+    ) -> dict[str, Any]:
+        self._next_order += 1
+        return {
+            "order_id": str(self._next_order),
+            "status": "filled",
+            "fill_price": limit_price or 0.0,
+            "timestamp": asyncio.get_event_loop().time(),
+            "symbol": symbol,
+            "legs": legs,
+            "qty": qty,
+            "action": action,
+            "order_type": order_type,
+        }

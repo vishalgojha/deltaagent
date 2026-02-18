@@ -51,39 +51,6 @@ export type Proposal = {
   resolved_at: string | null;
 };
 
-export type ChatToolCall = {
-  tool_use_id: string;
-  name: string;
-  input: Record<string, unknown>;
-  started_at: string;
-  completed_at: string;
-  duration_ms: number;
-};
-
-export type ChatToolResult = {
-  tool_use_id: string;
-  name: string;
-  output: Record<string, unknown>;
-  success: boolean;
-  error?: string | null;
-  started_at: string;
-  completed_at: string;
-  duration_ms: number;
-};
-
-export type ChatResponse = {
-  mode: "confirmation" | "autonomous";
-  message: string;
-  executed?: boolean;
-  proposal_id?: number;
-  proposal?: Record<string, unknown>;
-  execution?: Record<string, unknown>;
-  tool_trace_id: string;
-  planned_tools: Array<Record<string, unknown>>;
-  tool_calls: ChatToolCall[];
-  tool_results: ChatToolResult[];
-};
-
 export type ClientOut = {
   id: string;
   email: string;
@@ -93,4 +60,62 @@ export type ClientOut = {
   tier: string;
   is_active: boolean;
   created_at: string;
+};
+
+export type StrategyTemplate = {
+  id: number;
+  name: string;
+  strategy_type: "butterfly" | "iron_fly" | "broken_wing_butterfly";
+  underlying_symbol: string;
+  dte_min: number;
+  dte_max: number;
+  center_delta_target: number;
+  wing_width: number;
+  max_risk_per_trade: number;
+  sizing_method: "fixed_contracts" | "risk_based";
+  max_contracts: number;
+  hedge_enabled: boolean;
+  auto_execute: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type StrategyLeg = {
+  action: "BUY" | "SELL";
+  ratio: number;
+  symbol: string;
+  instrument: string;
+  expiry: string;
+  strike: number;
+  right: "C" | "P";
+  exchange: string;
+  trading_class: string | null;
+  multiplier: string | null;
+  delta: number | null;
+  mid_price: number | null;
+};
+
+export type StrategyPreview = {
+  template_id: number;
+  strategy_type: string;
+  expiry: string;
+  dte: number;
+  center_strike: number;
+  estimated_net_premium: number;
+  estimated_max_risk: number;
+  estimated_net_delta: number;
+  contracts: number;
+  greeks: Record<string, number>;
+  pnl_curve: Array<{ underlying: number; pnl: number }>;
+  legs: StrategyLeg[];
+};
+
+export type StrategyExecution = {
+  id: number;
+  template_id: number;
+  order_id: string | null;
+  status: string;
+  avg_fill_price: number | null;
+  execution_timestamp: string;
+  payload: Record<string, unknown>;
 };

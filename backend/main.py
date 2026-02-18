@@ -8,7 +8,7 @@ from redis.asyncio import from_url as redis_from_url
 from sqlalchemy import text
 
 from backend.agent.manager import AgentManager
-from backend.api import admin, agent, auth, clients, positions, trades, websocket
+from backend.api import admin, agent, auth, clients, positions, strategy_templates, trades, websocket
 from backend.config import get_settings
 from backend.db.models import Base
 from backend.db.session import SessionLocal, engine
@@ -24,15 +24,12 @@ async def lifespan(app: FastAPI):
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
     app.state.emergency_halt = EmergencyHaltController()
+    app.state.agent_manager = AgentManager(emergency_halt=app.state.emergency_halt)
     try:
         app.state.redis = redis_from_url(settings.redis_url, decode_responses=True)
         await app.state.redis.ping()
     except Exception:  # noqa: BLE001
         app.state.redis = None
-    app.state.agent_manager = AgentManager(
-        emergency_halt=app.state.emergency_halt,
-        redis_client=app.state.redis,
-    )
     app.state.db_sessionmaker = SessionLocal
     yield
     if app.state.redis is not None:
@@ -56,6 +53,7 @@ app.include_router(clients.router)
 app.include_router(positions.router)
 app.include_router(trades.router)
 app.include_router(agent.router)
+app.include_router(strategy_templates.router)
 app.include_router(websocket.router)
 
 

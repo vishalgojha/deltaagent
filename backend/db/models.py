@@ -120,3 +120,37 @@ class AgentMemory(Base):
     message_role: Mapped[str] = mapped_column(String(20))
     content: Mapped[str] = mapped_column(Text)
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
+class StrategyTemplate(Base):
+    __tablename__ = "strategy_templates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    client_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("clients.id"), index=True)
+    name: Mapped[str] = mapped_column(String(120), index=True)
+    strategy_type: Mapped[str] = mapped_column(String(40), index=True)
+    underlying_symbol: Mapped[str] = mapped_column(String(20), index=True)
+    dte_min: Mapped[int] = mapped_column(Integer)
+    dte_max: Mapped[int] = mapped_column(Integer)
+    center_delta_target: Mapped[float] = mapped_column(Float)
+    wing_width: Mapped[float] = mapped_column(Float)
+    max_risk_per_trade: Mapped[float] = mapped_column(Float)
+    sizing_method: Mapped[str] = mapped_column(String(40))
+    max_contracts: Mapped[int] = mapped_column(Integer)
+    hedge_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    auto_execute: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class StrategyExecution(Base):
+    __tablename__ = "strategy_executions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    client_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("clients.id"), index=True)
+    template_id: Mapped[int] = mapped_column(Integer, ForeignKey("strategy_templates.id"), index=True)
+    order_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="submitted", index=True)
+    avg_fill_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    execution_timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    payload: Mapped[dict] = mapped_column(JSON, default=dict)

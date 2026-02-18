@@ -36,39 +36,6 @@ class ChatRequest(BaseModel):
     message: str
 
 
-class ChatToolCall(BaseModel):
-    tool_use_id: str
-    name: str
-    input: dict = Field(default_factory=dict)
-    started_at: datetime
-    completed_at: datetime
-    duration_ms: int
-
-
-class ChatToolResult(BaseModel):
-    tool_use_id: str
-    name: str
-    output: dict = Field(default_factory=dict)
-    success: bool
-    error: str | None = None
-    started_at: datetime
-    completed_at: datetime
-    duration_ms: int
-
-
-class ChatResponse(BaseModel):
-    mode: str
-    message: str
-    executed: bool | None = None
-    proposal_id: int | None = None
-    proposal: dict | None = None
-    execution: dict | None = None
-    tool_trace_id: str
-    planned_tools: list[dict] = Field(default_factory=list)
-    tool_calls: list[ChatToolCall] = Field(default_factory=list)
-    tool_results: list[ChatToolResult] = Field(default_factory=list)
-
-
 class ApproveRejectResponse(BaseModel):
     proposal_id: int
     status: str
@@ -150,3 +117,92 @@ class ClientOut(BaseModel):
     tier: str
     is_active: bool
     created_at: datetime
+
+
+class StrategyTemplateCreateRequest(BaseModel):
+    name: str
+    strategy_type: Literal["butterfly", "iron_fly", "broken_wing_butterfly"]
+    underlying_symbol: str
+    dte_min: int = Field(ge=0)
+    dte_max: int = Field(ge=0)
+    center_delta_target: float = Field(gt=0, lt=1)
+    wing_width: float = Field(gt=0)
+    max_risk_per_trade: float = Field(gt=0)
+    sizing_method: Literal["fixed_contracts", "risk_based"]
+    max_contracts: int = Field(gt=0)
+    hedge_enabled: bool = False
+    auto_execute: bool = False
+
+
+class StrategyTemplateUpdateRequest(BaseModel):
+    name: str
+    strategy_type: Literal["butterfly", "iron_fly", "broken_wing_butterfly"]
+    underlying_symbol: str
+    dte_min: int = Field(ge=0)
+    dte_max: int = Field(ge=0)
+    center_delta_target: float = Field(gt=0, lt=1)
+    wing_width: float = Field(gt=0)
+    max_risk_per_trade: float = Field(gt=0)
+    sizing_method: Literal["fixed_contracts", "risk_based"]
+    max_contracts: int = Field(gt=0)
+    hedge_enabled: bool = False
+    auto_execute: bool = False
+
+
+class StrategyTemplateOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    name: str
+    strategy_type: str
+    underlying_symbol: str
+    dte_min: int
+    dte_max: int
+    center_delta_target: float
+    wing_width: float
+    max_risk_per_trade: float
+    sizing_method: str
+    max_contracts: int
+    hedge_enabled: bool
+    auto_execute: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class StrategyLegOut(BaseModel):
+    action: Literal["BUY", "SELL"]
+    ratio: int
+    symbol: str
+    instrument: str
+    expiry: str
+    strike: float
+    right: Literal["C", "P"]
+    exchange: str = "CME"
+    trading_class: str | None = None
+    multiplier: str | None = None
+    delta: float | None = None
+    mid_price: float | None = None
+
+
+class StrategyPreviewOut(BaseModel):
+    template_id: int
+    strategy_type: str
+    expiry: str
+    dte: int
+    center_strike: float
+    estimated_net_premium: float
+    estimated_max_risk: float
+    estimated_net_delta: float
+    contracts: int
+    greeks: dict[str, float]
+    pnl_curve: list[dict[str, float]]
+    legs: list[StrategyLegOut]
+
+
+class StrategyExecutionOut(BaseModel):
+    id: int
+    template_id: int
+    order_id: str | None
+    status: str
+    avg_fill_price: float | None
+    execution_timestamp: datetime
+    payload: dict

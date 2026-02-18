@@ -1,5 +1,15 @@
 import { api } from "./client";
-import type { AgentStatus, ChatResponse, ClientOut, LoginResponse, Position, Proposal, Trade } from "../types";
+import type {
+  AgentStatus,
+  ClientOut,
+  LoginResponse,
+  Position,
+  Proposal,
+  StrategyExecution,
+  StrategyPreview,
+  StrategyTemplate,
+  Trade
+} from "../types";
 import type { RiskParameters } from "../features/riskControls";
 
 export function login(email: string, password: string) {
@@ -49,7 +59,7 @@ export function getProposals(clientId: string) {
 }
 
 export function sendChat(clientId: string, message: string) {
-  return api<ChatResponse>(`/clients/${clientId}/agent/chat`, {
+  return api<Record<string, unknown>>(`/clients/${clientId}/agent/chat`, {
     method: "POST",
     body: JSON.stringify({ message })
   });
@@ -85,4 +95,63 @@ export function rejectProposal(clientId: string, proposalId: number) {
   return api<Record<string, unknown>>(`/clients/${clientId}/agent/reject/${proposalId}`, {
     method: "POST"
   });
+}
+
+export function createStrategyTemplate(payload: {
+  name: string;
+  strategy_type: "butterfly" | "iron_fly" | "broken_wing_butterfly";
+  underlying_symbol: string;
+  dte_min: number;
+  dte_max: number;
+  center_delta_target: number;
+  wing_width: number;
+  max_risk_per_trade: number;
+  sizing_method: "fixed_contracts" | "risk_based";
+  max_contracts: number;
+  hedge_enabled: boolean;
+  auto_execute: boolean;
+}) {
+  return api<StrategyTemplate>("/strategy-template", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function listStrategyTemplates() {
+  return api<StrategyTemplate[]>("/strategy-template");
+}
+
+export function resolveStrategyTemplate(templateId: number) {
+  return api<StrategyPreview>(`/strategy-template/${templateId}/resolve`, { method: "POST" });
+}
+
+export function executeStrategyTemplate(templateId: number) {
+  return api<StrategyExecution>(`/strategy-template/${templateId}/execute`, { method: "POST" });
+}
+
+export function updateStrategyTemplate(
+  templateId: number,
+  payload: {
+    name: string;
+    strategy_type: "butterfly" | "iron_fly" | "broken_wing_butterfly";
+    underlying_symbol: string;
+    dte_min: number;
+    dte_max: number;
+    center_delta_target: number;
+    wing_width: number;
+    max_risk_per_trade: number;
+    sizing_method: "fixed_contracts" | "risk_based";
+    max_contracts: number;
+    hedge_enabled: boolean;
+    auto_execute: boolean;
+  }
+) {
+  return api<StrategyTemplate>(`/strategy-template/${templateId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function deleteStrategyTemplate(templateId: number) {
+  return api<void>(`/strategy-template/${templateId}`, { method: "DELETE" });
 }

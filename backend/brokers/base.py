@@ -67,5 +67,20 @@ class BrokerBase(ABC):
         limit_price: float | None = None,
     ) -> BrokerOrderResult: ...
 
+    async def submit_combo_order(
+        self,
+        symbol: str,
+        legs: list[dict[str, Any]],
+        qty: int,
+        order_type: str,
+        limit_price: float | None = None,
+        action: str = "BUY",
+    ) -> dict[str, Any]:
+        raise BrokerOrderError(
+            "Combo/BAG orders are not supported by this broker implementation",
+            retryable=False,
+            context={"symbol": symbol},
+        )
+
     @abstractmethod
     async def stream_greeks(self, callback: Callable[[dict[str, Any]], Any]) -> None: ...
