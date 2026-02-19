@@ -658,6 +658,29 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
     }, 4500);
   }
 
+  async function copyToastLine(toast: ToastItem) {
+    const prefix = toast.tone === "ok" ? "[OK]" : toast.tone === "warn" ? "[WARN]" : "[ERR]";
+    const line = `${prefix} ${toast.text}`;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(line);
+      } else {
+        const area = document.createElement("textarea");
+        area.value = line;
+        area.setAttribute("readonly", "true");
+        area.style.position = "absolute";
+        area.style.left = "-9999px";
+        document.body.appendChild(area);
+        area.select();
+        document.execCommand("copy");
+        document.body.removeChild(area);
+      }
+      pushToast("ok", "Toast line copied");
+    } catch {
+      pushToast("err", "Clipboard copy failed");
+    }
+  }
+
   async function onApprove(id: number) {
     if (effectiveBlocked) {
       const blockReason = haltReason || readinessQuery.data?.last_error || "Execution blocked: readiness checks are failing";
@@ -850,10 +873,17 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
         <div className="toast-stack" aria-live="polite">
           {toasts.map((toast) => (
             <div key={toast.id} className={`toast-item ${toast.tone}`}>
-              <span className="toast-prefix">
-                {toast.tone === "ok" ? "[OK]" : toast.tone === "warn" ? "[WARN]" : "[ERR]"}
-              </span>{" "}
-              {toast.text}
+              <div className="toast-row">
+                <span>
+                  <span className="toast-prefix">
+                    {toast.tone === "ok" ? "[OK]" : toast.tone === "warn" ? "[WARN]" : "[ERR]"}
+                  </span>{" "}
+                  {toast.text}
+                </span>
+                <button type="button" className="toast-copy-btn" onClick={() => void copyToastLine(toast)}>
+                  copy
+                </button>
+              </div>
             </div>
           ))}
         </div>
