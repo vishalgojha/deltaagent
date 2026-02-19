@@ -371,6 +371,39 @@ describe("AgentConsolePage", () => {
     expect(screen.queryByText("Debug Stream Events")).not.toBeInTheDocument();
   });
 
+  it("marks lifecycle source as websocket when order_status stream event arrives", async () => {
+    vi.mocked(endpoints.getProposals).mockResolvedValueOnce([
+      {
+        id: 808,
+        timestamp: "2026-02-17T00:00:00Z",
+        trade_payload: { action: "SELL", symbol: "ES", qty: 1 },
+        agent_reasoning: "stream source test",
+        status: "pending",
+        resolved_at: null
+      }
+    ]);
+    vi.mocked(useAgentStream).mockReturnValue({
+      connected: true,
+      lastEvent: {
+        type: "order_status",
+        data: {
+          trade_id: 55,
+          order_id: "OID-STREAM-55",
+          symbol: "ES",
+          action: "SELL",
+          qty: 1,
+          status: "filled",
+          fill_price: 20.5,
+          timestamp: "2026-02-19T00:00:00Z"
+        }
+      }
+    });
+
+    renderWithProviders(<AgentConsolePage clientId="client-1" token="token-1" />);
+
+    expect(await screen.findByText("Source: websocket")).toBeInTheDocument();
+  });
+
   it("blocks approval when execution readiness is red", async () => {
     const user = userEvent.setup();
     vi.mocked(endpoints.getProposals)
