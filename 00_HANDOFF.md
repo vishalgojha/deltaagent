@@ -39,6 +39,7 @@ Without this, GitHub/CI will not include the latest Agent Console changes.
 From repo root, double-click:
 
 - `start.bat` to start infra + backend + frontend
+- `status.bat` to check what is UP/DOWN
 - `stop.bat` to stop everything
 
 ### Manual (if needed)
