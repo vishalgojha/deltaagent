@@ -1036,6 +1036,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
             type="button"
             className="secondary"
             disabled={reconnectInProgress || reconnectBrokerMutation.isPending}
+            data-testid="reconnect-broker-button"
             onClick={() => void onReconnectBroker()}
           >
             {reconnectInProgress ? `Reconnecting ${Math.max(reconnectAttempt, 1)}/3...` : "Reconnect Broker"}
@@ -1046,7 +1047,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
               {reconnectNextRetryIn !== null ? ` | next in ${reconnectNextRetryIn}s` : ""}
             </span>
           )}
-          <button type="button" className="secondary" onClick={() => setShowAdvanced((prev) => !prev)}>
+          <button type="button" className="secondary" data-testid="toggle-advanced-button" onClick={() => setShowAdvanced((prev) => !prev)}>
             {showAdvanced ? "Hide Advanced" : "Show Advanced"}
           </button>
           {showAdvanced && (
@@ -1140,6 +1141,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
                   type="button"
                   className="secondary"
                   disabled={haltBlocked}
+                  data-testid="run-preflight-button"
                   onClick={async () => {
                     const readiness = await readinessQuery.refetch();
                     if (!readiness.data?.ready || haltBlocked) {
@@ -1160,6 +1162,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
                 </button>
                 <button
                   type="button"
+                  data-testid="execute-trade-button"
                   disabled={
                     executeBlockedByGuard ||
                     !selectedProposalId ||
@@ -1175,6 +1178,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
                 <label className="row" style={{ marginTop: 4 }}>
                   <input
                     type="checkbox"
+                    data-testid="execute-confirm-checkbox"
                     checked={executeConfirmed}
                     onChange={(event) => setExecuteConfirmed(event.target.checked)}
                   />
@@ -1229,10 +1233,10 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
                 <p style={{ margin: 0, fontWeight: 700 }}>Proposal #{proposal.id}</p>
                 <p className="muted">{summarizeProposalPayload(proposal.trade_payload)}</p>
                 <div className="row">
-                  <button disabled={effectiveBlocked} onClick={() => onApprove(proposal.id)}>
+                  <button data-testid={`approve-proposal-${proposal.id}`} disabled={effectiveBlocked} onClick={() => onApprove(proposal.id)}>
                     Approve Proposal
                   </button>
-                  <button className="danger" onClick={() => onReject(proposal.id)}>
+                  <button data-testid={`reject-proposal-${proposal.id}`} className="danger" onClick={() => onReject(proposal.id)}>
                     Reject Proposal
                   </button>
                 </div>
@@ -1667,12 +1671,14 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
                 type="button"
                 className="secondary"
                 ref={executeCancelButtonRef}
+                data-testid="trade-ticket-cancel-button"
                 onClick={() => setShowExecuteModal(false)}
               >
                 Cancel
               </button>
               <button
                 type="button"
+                data-testid="trade-ticket-confirm-button"
                 disabled={executeBlockedByGuard || approveMutation.isPending || executionPhase === "executing"}
                 onClick={confirmExecuteFromModal}
               >

@@ -74,7 +74,7 @@ describe("AgentConsolePage", () => {
     await user.click(screen.getByRole("button", { name: "Send" }));
 
     expect(await screen.findByText("Proposal #101")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Approve Proposal" }));
+    await user.click(screen.getByTestId("approve-proposal-101"));
 
     await waitFor(() => {
       expect(vi.mocked(endpoints.approveProposal)).toHaveBeenCalledWith("client-1", 101);
@@ -101,7 +101,7 @@ describe("AgentConsolePage", () => {
     renderWithProviders(<AgentConsolePage clientId="client-1" token="token-1" />);
     expect(await screen.findByText("Proposal #202")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Reject Proposal" }));
+    await user.click(screen.getByTestId("reject-proposal-202"));
     await waitFor(() => {
       expect(vi.mocked(endpoints.rejectProposal)).toHaveBeenCalledWith("client-1", 202);
     });
@@ -141,12 +141,12 @@ describe("AgentConsolePage", () => {
     ]);
 
     renderWithProviders(<AgentConsolePage clientId="client-1" token="token-1" />);
-    await screen.findByRole("button", { name: "Execute Trade" });
+    await screen.findByTestId("execute-trade-button");
 
-    await user.click(screen.getByLabelText("I confirm this trade execution"));
-    await user.click(screen.getByRole("button", { name: "Execute Trade" }));
+    await user.click(screen.getByTestId("execute-confirm-checkbox"));
+    await user.click(screen.getByTestId("execute-trade-button"));
     expect(await screen.findByRole("dialog", { name: "Trade Ticket Confirmation" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Confirm Execute" }));
+    await user.click(screen.getByTestId("trade-ticket-confirm-button"));
 
     await waitFor(() => {
       expect(vi.mocked(endpoints.approveProposal)).toHaveBeenCalledWith("client-1", 303);
@@ -169,14 +169,14 @@ describe("AgentConsolePage", () => {
     ]);
 
     renderWithProviders(<AgentConsolePage clientId="client-1" token="token-1" />);
-    await screen.findByRole("button", { name: "Execute Trade" });
+    await screen.findByTestId("execute-trade-button");
 
-    const executeButton = screen.getByRole("button", { name: "Execute Trade" });
+    const executeButton = screen.getByTestId("execute-trade-button");
     expect(executeButton).toBeDisabled();
     expect(screen.getByText("Confirm execution checkbox to continue.")).toBeInTheDocument();
 
-    await user.click(screen.getByLabelText("I confirm this trade execution"));
-    expect(screen.getByRole("button", { name: "Execute Trade" })).toBeEnabled();
+    await user.click(screen.getByTestId("execute-confirm-checkbox"));
+    expect(screen.getByTestId("execute-trade-button")).toBeEnabled();
   });
 
   it("supports modal keyboard safety shortcuts", async () => {
@@ -210,8 +210,8 @@ describe("AgentConsolePage", () => {
     ]);
 
     renderWithProviders(<AgentConsolePage clientId="client-1" token="token-1" />);
-    await user.click(screen.getByLabelText("I confirm this trade execution"));
-    await user.click(screen.getByRole("button", { name: "Execute Trade" }));
+    await user.click(screen.getByTestId("execute-confirm-checkbox"));
+    await user.click(screen.getByTestId("execute-trade-button"));
     expect(await screen.findByRole("dialog", { name: "Trade Ticket Confirmation" })).toBeInTheDocument();
 
     await user.keyboard("{Escape}");
@@ -219,7 +219,7 @@ describe("AgentConsolePage", () => {
       expect(screen.queryByRole("dialog", { name: "Trade Ticket Confirmation" })).not.toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "Execute Trade" }));
+    await user.click(screen.getByTestId("execute-trade-button"));
     expect(await screen.findByRole("dialog", { name: "Trade Ticket Confirmation" })).toBeInTheDocument();
     await user.keyboard("{Enter}");
 
@@ -242,11 +242,11 @@ describe("AgentConsolePage", () => {
     ]);
 
     renderWithProviders(<AgentConsolePage clientId="client-1" token="token-1" />);
-    await user.click(screen.getByLabelText("I confirm this trade execution"));
-    await user.click(screen.getByRole("button", { name: "Execute Trade" }));
+    await user.click(screen.getByTestId("execute-confirm-checkbox"));
+    await user.click(screen.getByTestId("execute-trade-button"));
 
     expect(await screen.findByRole("dialog", { name: "Trade Ticket Confirmation" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
+    expect(screen.getByTestId("trade-ticket-cancel-button")).toHaveFocus();
   });
 
   it("restores persisted timeline runs on load", async () => {
@@ -278,7 +278,7 @@ describe("AgentConsolePage", () => {
     vi.mocked(endpoints.getProposals).mockResolvedValue([]);
     renderWithProviders(<AgentConsolePage clientId="client-1" token="token-1" />);
 
-    await userEvent.setup().click(await screen.findByRole("button", { name: "Show Advanced" }));
+    await userEvent.setup().click(await screen.findByTestId("toggle-advanced-button"));
     const runTitle = await screen.findByText("Run: persisted run");
     expect(runTitle).toBeInTheDocument();
     const runCard = runTitle.closest(".card");
@@ -322,7 +322,7 @@ describe("AgentConsolePage", () => {
 
     renderWithProviders(<AgentConsolePage clientId="client-1" token="token-1" />);
     await screen.findByRole("button", { name: "Send" });
-    await user.click(screen.getByRole("button", { name: "Show Advanced" }));
+    await user.click(screen.getByTestId("toggle-advanced-button"));
 
     await user.type(screen.getByPlaceholderText("Ask the agent..."), "hedge");
     await user.click(screen.getByRole("button", { name: "Send" }));
@@ -364,7 +364,7 @@ describe("AgentConsolePage", () => {
 
     renderWithProviders(<AgentConsolePage clientId="client-1" token="token-1" />);
 
-    await userEvent.setup().click(await screen.findByRole("button", { name: "Show Advanced" }));
+    await userEvent.setup().click(await screen.findByTestId("toggle-advanced-button"));
     expect(await screen.findByText("Live Status")).toBeInTheDocument();
     expect(await screen.findByText(/"delta":\s*0\.1/)).toBeInTheDocument();
     expect(screen.queryByText("Run: Agent event")).not.toBeInTheDocument();
@@ -397,9 +397,9 @@ describe("AgentConsolePage", () => {
     });
 
     renderWithProviders(<AgentConsolePage clientId="client-1" token="token-1" />);
-    await user.click(await screen.findByRole("button", { name: "Show Advanced" }));
+    await user.click(await screen.findByTestId("toggle-advanced-button"));
     expect(await screen.findByText("Execution Readiness")).toBeInTheDocument();
-    const approveButton = await screen.findByRole("button", { name: "Approve" });
+    const approveButton = await screen.findByTestId("approve-proposal-909");
     expect(approveButton).toBeDisabled();
 
     await user.click(approveButton);
@@ -428,13 +428,13 @@ describe("AgentConsolePage", () => {
     const sendButton = await screen.findByRole("button", { name: "Send" });
     expect(sendButton).toBeDisabled();
 
-    const approveButton = await screen.findByRole("button", { name: "Approve Proposal" });
+    const approveButton = await screen.findByTestId("approve-proposal-707");
     expect(approveButton).toBeDisabled();
 
     await user.click(approveButton);
     expect(vi.mocked(endpoints.approveProposal)).not.toHaveBeenCalled();
 
-    await user.click(screen.getByRole("button", { name: "Show Advanced" }));
+    await user.click(screen.getByTestId("toggle-advanced-button"));
     const haltMessages = await screen.findAllByText(/Emergency halt enabled by admin/);
     expect(haltMessages.length).toBeGreaterThan(0);
   });
