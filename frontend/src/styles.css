@@ -138,6 +138,51 @@ pre {
   margin-bottom: 10px;
 }
 
+.section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.section-head p {
+  margin-top: 4px;
+}
+
+.metric-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.metric-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  background: rgba(2, 6, 23, 0.4);
+}
+
+.metric-label {
+  font-size: 11px;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.metric-value {
+  margin-top: 4px;
+  font-weight: 700;
+  font-size: 18px;
+  color: #e0f2fe;
+  overflow-wrap: anywhere;
+}
+
+.field-error {
+  color: #fca5a5;
+  font-size: 13px;
+}
+
 .grid {
   display: grid;
   gap: 12px;

@@ -257,9 +257,42 @@ export function StrategyTemplatesPage({ isHalted = false, haltReason = "" }: Pro
   }
 
   return (
-    <div className="grid grid-2">
+    <div className="grid">
       <section className="card">
-        <h3>Create Strategy Template</h3>
+        <div className="section-head">
+          <div>
+            <h3>Strategy Template Engine</h3>
+            <p className="muted">Create rule-based templates and resolve dynamic strikes before execution.</p>
+          </div>
+        </div>
+        <div className="metric-grid" style={{ marginTop: 12 }}>
+          <article className="metric-card">
+            <p className="metric-label">Templates</p>
+            <p className="metric-value">{templates.length}</p>
+          </article>
+          <article className="metric-card">
+            <p className="metric-label">Selected</p>
+            <p className="metric-value">{selectedTemplate ?? "-"}</p>
+          </article>
+          <article className="metric-card">
+            <p className="metric-label">Preview</p>
+            <p className="metric-value">{preview ? "loaded" : "empty"}</p>
+          </article>
+          <article className="metric-card">
+            <p className="metric-label">Execution</p>
+            <p className="metric-value">{isHalted ? "halted" : "enabled"}</p>
+          </article>
+        </div>
+      </section>
+
+      <div className="grid grid-2">
+      <section className="card">
+        <div className="section-head">
+          <div>
+            <h3>Create Strategy Template</h3>
+            <p className="muted">Store rules only, never fixed strikes.</p>
+          </div>
+        </div>
         <form className="grid" onSubmit={onCreate}>
           <label className="grid">
             Name
@@ -375,7 +408,12 @@ export function StrategyTemplatesPage({ isHalted = false, haltReason = "" }: Pro
       </section>
 
       <section className="card">
-        <h3>Template Preview</h3>
+        <div className="section-head">
+          <div>
+            <h3>Template Preview</h3>
+            <p className="muted">Resolve current chain, Greeks, and estimated payoff.</p>
+          </div>
+        </div>
         <div className="grid">
           <label className="grid">
             Select Template
@@ -468,6 +506,7 @@ export function StrategyTemplatesPage({ isHalted = false, haltReason = "" }: Pro
         {error && <p style={{ color: "#991b1b", marginTop: 8 }}>{error}</p>}
         {success && <p style={{ color: "#166534", marginTop: 8 }}>{success}</p>}
       </section>
+      </div>
     </div>
   );
 }

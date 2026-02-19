@@ -88,7 +88,35 @@ export function BrokerSettingsPage({ clientId }: Props) {
   }
 
   return (
-    <div className="grid grid-2">
+    <div className="grid">
+      <section className="card">
+        <div className="section-head">
+          <div>
+            <h3>Broker Settings</h3>
+            <p className="muted">Reconnect broker access, run diagnostics, and inspect health state.</p>
+          </div>
+        </div>
+        <div className="metric-grid" style={{ marginTop: 12 }}>
+          <article className="metric-card">
+            <p className="metric-label">Healthy</p>
+            <p className="metric-value">{String(healthQuery.data?.healthy ?? "-")}</p>
+          </article>
+          <article className="metric-card">
+            <p className="metric-label">Agent Mode</p>
+            <p className="metric-value">{healthQuery.data?.mode ?? "-"}</p>
+          </article>
+          <article className="metric-card">
+            <p className="metric-label">Last Action</p>
+            <p className="metric-value">{healthQuery.data?.last_action ?? "none"}</p>
+          </article>
+          <article className="metric-card">
+            <p className="metric-label">Preflight</p>
+            <p className="metric-value">{preflightResult ? (preflightResult.ok ? "PASS" : "FAIL") : "not run"}</p>
+          </article>
+        </div>
+      </section>
+
+      <div className="grid grid-2">
       <section className="card">
         <h3>Broker Connection Health</h3>
         {healthQuery.isLoading ? (
@@ -175,6 +203,7 @@ export function BrokerSettingsPage({ clientId }: Props) {
         {connectError && <p style={{ color: "#991b1b" }}>{connectError}</p>}
         {preflightError && <p style={{ color: "#991b1b" }}>{preflightError}</p>}
       </section>
+      </div>
 
       <section className="card">
         <h3>Broker Preflight Checklist</h3>

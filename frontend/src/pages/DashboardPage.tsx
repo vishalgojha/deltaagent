@@ -91,7 +91,40 @@ export function DashboardPage({ clientId }: Props) {
   }
 
   return (
-    <div className="grid grid-2">
+    <div className="grid">
+      <section className="card">
+        <div className="section-head">
+          <div>
+            <h3>Portfolio Overview</h3>
+            <p className="muted">Live status, exposure snapshot, and risk controls.</p>
+          </div>
+        </div>
+        <div className="metric-grid" style={{ marginTop: 12 }}>
+          <article className="metric-card">
+            <p className="metric-label">Mode</p>
+            <p className="metric-value">{status?.mode ?? "-"}</p>
+          </article>
+          <article className="metric-card">
+            <p className="metric-label">Healthy</p>
+            <p className="metric-value">{String(status?.healthy ?? "-")}</p>
+          </article>
+          <article className="metric-card">
+            <p className="metric-label">Positions</p>
+            <p className="metric-value">{positions.length}</p>
+          </article>
+          <article className="metric-card">
+            <p className="metric-label">Recent Trades</p>
+            <p className="metric-value">{trades.length}</p>
+          </article>
+        </div>
+        {status && (
+          <p className="muted" style={{ marginTop: 12 }}>
+            Last Action: {status.last_action ?? "none"} | Net Greeks: {JSON.stringify(status.net_greeks)}
+          </p>
+        )}
+      </section>
+
+      <div className="grid grid-2">
       <section className="card">
         <h3>Agent Status</h3>
         {status ? (
@@ -108,6 +141,9 @@ export function DashboardPage({ clientId }: Props) {
 
       <section className="card">
         <h3>Positions</h3>
+        <p className="muted" style={{ marginBottom: 8 }}>
+          Current contract-level exposure.
+        </p>
         <table>
           <thead>
             <tr>
@@ -129,9 +165,15 @@ export function DashboardPage({ clientId }: Props) {
           </tbody>
         </table>
       </section>
+      </div>
 
       <section className="card">
-        <h3>Risk Controls</h3>
+        <div className="section-head">
+          <div>
+            <h3>Risk Controls</h3>
+            <p className="muted">Apply presets or tune parameters manually.</p>
+          </div>
+        </div>
         {riskQuery.isLoading ? (
           <p className="muted">Loading risk controls...</p>
         ) : (
@@ -156,7 +198,7 @@ export function DashboardPage({ clientId }: Props) {
                 inputMode="decimal"
               />
               {riskErrors.delta_threshold && (
-                <span style={{ color: "#991b1b", fontSize: 13 }}>{riskErrors.delta_threshold}</span>
+                <span className="field-error">{riskErrors.delta_threshold}</span>
               )}
             </label>
 
@@ -167,7 +209,7 @@ export function DashboardPage({ clientId }: Props) {
                 onChange={(e) => onRiskFieldChange("max_size", e.target.value)}
                 inputMode="numeric"
               />
-              {riskErrors.max_size && <span style={{ color: "#991b1b", fontSize: 13 }}>{riskErrors.max_size}</span>}
+              {riskErrors.max_size && <span className="field-error">{riskErrors.max_size}</span>}
             </label>
 
             <label className="grid">
@@ -177,7 +219,7 @@ export function DashboardPage({ clientId }: Props) {
                 onChange={(e) => onRiskFieldChange("max_loss", e.target.value)}
                 inputMode="decimal"
               />
-              {riskErrors.max_loss && <span style={{ color: "#991b1b", fontSize: 13 }}>{riskErrors.max_loss}</span>}
+              {riskErrors.max_loss && <span className="field-error">{riskErrors.max_loss}</span>}
             </label>
 
             <label className="grid">
@@ -187,9 +229,7 @@ export function DashboardPage({ clientId }: Props) {
                 onChange={(e) => onRiskFieldChange("max_open_positions", e.target.value)}
                 inputMode="numeric"
               />
-              {riskErrors.max_open_positions && (
-                <span style={{ color: "#991b1b", fontSize: 13 }}>{riskErrors.max_open_positions}</span>
-              )}
+              {riskErrors.max_open_positions && <span className="field-error">{riskErrors.max_open_positions}</span>}
             </label>
 
             <button type="submit" disabled={saveRiskMutation.isPending}>
@@ -201,8 +241,11 @@ export function DashboardPage({ clientId }: Props) {
         )}
       </section>
 
-      <section className="card" style={{ gridColumn: "1 / -1" }}>
+      <section className="card">
         <h3>Recent Trades</h3>
+        <p className="muted" style={{ marginBottom: 8 }}>
+          Latest executions and statuses.
+        </p>
         <table>
           <thead>
             <tr>
