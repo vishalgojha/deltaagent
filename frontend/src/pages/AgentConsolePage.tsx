@@ -145,6 +145,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
   const [error, setError] = useState("");
   const [showDebugStream, setShowDebugStream] = useState(false);
   const [activeTab, setActiveTab] = useState<"operate" | "timeline" | "debug">("operate");
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [timelineQuery, setTimelineQuery] = useState("");
   const [timelineStatusFilter, setTimelineStatusFilter] = useState<"all" | "running" | "completed">("all");
   const [liveStatus, setLiveStatus] = useState<LiveAgentStatus | null>(null);
@@ -665,26 +666,33 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
 
       <section className="card">
         <div className="row">
-          <button type="button" className={activeTab === "operate" ? "" : "secondary"} onClick={() => setActiveTab("operate")}>
-            Operate
+          <button type="button" className="secondary" onClick={() => setShowAdvanced((prev) => !prev)}>
+            {showAdvanced ? "Hide Advanced" : "Show Advanced"}
           </button>
-          <button type="button" className={activeTab === "timeline" ? "" : "secondary"} onClick={() => setActiveTab("timeline")}>
-            Timeline
-          </button>
-          <button
-            type="button"
-            className={activeTab === "debug" ? "" : "secondary"}
-            onClick={() => {
-              setShowDebugStream(true);
-              setActiveTab("debug");
-            }}
-          >
-            Debug
-          </button>
+          {showAdvanced && (
+            <>
+              <button type="button" className={activeTab === "operate" ? "" : "secondary"} onClick={() => setActiveTab("operate")}>
+                Operate
+              </button>
+              <button type="button" className={activeTab === "timeline" ? "" : "secondary"} onClick={() => setActiveTab("timeline")}>
+                Timeline
+              </button>
+              <button
+                type="button"
+                className={activeTab === "debug" ? "" : "secondary"}
+                onClick={() => {
+                  setShowDebugStream(true);
+                  setActiveTab("debug");
+                }}
+              >
+                Debug
+              </button>
+            </>
+          )}
         </div>
       </section>
 
-      {activeTab === "operate" && (
+      {(activeTab === "operate" || !showAdvanced) && (
         <div className="grid grid-2">
           <section className="card">
         <h3>Trade Assistant</h3>
@@ -721,6 +729,26 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
             ))}
           </div>
         )}
+
+        <div className="row" style={{ marginTop: 12 }}>
+          <button type="submit" form="simple-trade-form" disabled={haltBlocked || sendChatMutation.isPending}>
+            {sendChatMutation.isPending ? "Running..." : "Send"}
+          </button>
+          <span className="muted">
+            {mode === "confirmation"
+              ? "Confirmation mode: proposal will require Approve."
+              : "Autonomous mode: agent may execute directly if allowed."}
+          </span>
+        </div>
+
+        <form id="simple-trade-form" onSubmit={onSend} className="grid" style={{ marginTop: 10 }}>
+          <textarea
+            rows={3}
+            placeholder="Ask the agent..."
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+          />
+        </form>
 
         <div style={{ marginTop: 14, borderTop: "1px solid rgba(148,163,184,0.25)", paddingTop: 12 }}>
         <h3>Agent Controls</h3>
@@ -798,16 +826,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
             Net Greeks: {JSON.stringify(liveGreeks?.net_greeks ?? liveStatus?.net_greeks ?? statusQuery.data?.net_greeks ?? {})}
           </p>
         </div>
-        <form onSubmit={onSend} className="grid" style={{ marginTop: 12 }}>
-          <textarea
-            rows={4}
-            placeholder="Ask the agent..."
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-          />
-          <button type="submit" disabled={haltBlocked}>Send</button>
-        </form>
-        <div className="row" style={{ marginTop: 6 }}>
+        <div className="row" style={{ marginTop: 8 }}>
           <button
             type="button"
             className="secondary"
@@ -1000,7 +1019,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
         </div>
       )}
 
-      {activeTab === "timeline" && (
+      {showAdvanced && activeTab === "timeline" && (
         <section className="card">
           <h3>Agent Timeline</h3>
           <div className="row" style={{ marginBottom: 8 }}>
@@ -1072,7 +1091,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
         </section>
       )}
 
-      {activeTab === "debug" && (
+      {showAdvanced && activeTab === "debug" && (
         <section className="card">
           <h3>Debug Stream Events</h3>
           <p className="muted">Tool traces and websocket payloads for diagnostics.</p>
