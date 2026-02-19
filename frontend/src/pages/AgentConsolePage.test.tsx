@@ -4,10 +4,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentConsolePage } from "./AgentConsolePage";
 import * as endpoints from "../api/endpoints";
 import { renderWithProviders } from "../test/renderWithProviders";
+import { useAgentStream } from "../hooks/useAgentStream";
 
-vi.mock("../hooks/useAgentStream", () => ({
-  useAgentStream: () => ({ connected: true, lastEvent: null })
-}));
+vi.mock("../hooks/useAgentStream", () => ({ useAgentStream: vi.fn() }));
 
 vi.mock("../api/endpoints", async () => {
   const actual = await vi.importActual<typeof import("../api/endpoints")>("../api/endpoints");
@@ -26,6 +25,7 @@ describe("AgentConsolePage", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     localStorage.clear();
+    vi.mocked(useAgentStream).mockReturnValue({ connected: true, lastEvent: null });
     vi.mocked(endpoints.getStatus).mockResolvedValue({
       client_id: "client-1",
       mode: "confirmation",
@@ -187,5 +187,27 @@ describe("AgentConsolePage", () => {
 
     await user.click(flowUi.getByRole("button", { name: "Details" }));
     expect(await flowUi.findByText(/"delta":\s*0\.5/)).toBeInTheDocument();
+  });
+
+  it("shows live status panel and hides greeks/status stream spam from timeline by default", async () => {
+    vi.mocked(endpoints.getProposals).mockResolvedValue([]);
+    vi.mocked(useAgentStream).mockReturnValue({
+      connected: true,
+      lastEvent: {
+        type: "greeks",
+        data: {
+          net_greeks: { delta: 0.1, gamma: 0.02, theta: -0.03, vega: 0.04 },
+          positions: [],
+          updated_at: "2026-02-18T10:02:39.534951+00:00"
+        }
+      }
+    });
+
+    renderWithProviders(<AgentConsolePage clientId="client-1" token="token-1" />);
+
+    expect(await screen.findByText("Live Status")).toBeInTheDocument();
+    expect(await screen.findByText(/"delta":\s*0\.1/)).toBeInTheDocument();
+    expect(screen.queryByText("Run: Agent event")).not.toBeInTheDocument();
+    expect(screen.queryByText("Debug Stream Events")).not.toBeInTheDocument();
   });
 });

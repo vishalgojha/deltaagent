@@ -6,7 +6,12 @@ type Props = { clientId: string };
 
 export function BrokerSettingsPage({ clientId }: Props) {
   const queryClient = useQueryClient();
-  const [credsJson, setCredsJson] = useState("");
+  const [useSavedCredentials, setUseSavedCredentials] = useState(true);
+  const [ibkrHost, setIbkrHost] = useState("host.docker.internal");
+  const [ibkrPort, setIbkrPort] = useState("4002");
+  const [ibkrClientId, setIbkrClientId] = useState("901");
+  const [underlyingInstrument, setUnderlyingInstrument] = useState("IND");
+  const [delayedMarketData, setDelayedMarketData] = useState(true);
   const [connectError, setConnectError] = useState("");
   const [connectResult, setConnectResult] = useState("");
 
@@ -27,24 +32,33 @@ export function BrokerSettingsPage({ clientId }: Props) {
     setConnectError("");
     setConnectResult("");
 
-    let parsed: Record<string, unknown> | undefined;
-    const trimmed = credsJson.trim();
-    if (trimmed) {
-      try {
-        const payload = JSON.parse(trimmed) as unknown;
-        if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-          setConnectError("Broker credentials must be a JSON object");
-          return;
-        }
-        parsed = payload as Record<string, unknown>;
-      } catch {
-        setConnectError("Broker credentials must be valid JSON");
+    let credentials: Record<string, unknown> | undefined;
+    if (!useSavedCredentials) {
+      const port = Number(ibkrPort);
+      const clientIdValue = Number(ibkrClientId);
+      if (!ibkrHost.trim()) {
+        setConnectError("IBKR host is required");
         return;
       }
+      if (!Number.isFinite(port)) {
+        setConnectError("IBKR port must be a valid number");
+        return;
+      }
+      if (!Number.isFinite(clientIdValue)) {
+        setConnectError("Client ID must be a valid number");
+        return;
+      }
+      credentials = {
+        host: ibkrHost.trim(),
+        port,
+        client_id: clientIdValue,
+        underlying_instrument: underlyingInstrument.trim() || "IND",
+        delayed_market_data: delayedMarketData
+      };
     }
 
     try {
-      const result = await connectMutation.mutateAsync(parsed);
+      const result = await connectMutation.mutateAsync(credentials);
       setConnectResult(`Connection successful: connected=${String(result.connected)} broker=${String(result.broker)}`);
     } catch (err) {
       setConnectError(err instanceof Error ? err.message : "Broker connection failed");
@@ -84,18 +98,50 @@ export function BrokerSettingsPage({ clientId }: Props) {
       <section className="card">
         <h3>Broker Credentials & Reconnect</h3>
         <form className="grid" onSubmit={onSubmit}>
-          <label className="grid">
-            Broker Credentials (JSON, optional)
-            <textarea
-              rows={10}
-              value={credsJson}
-              onChange={(e) => setCredsJson(e.target.value)}
-              placeholder='{"host":"localhost","port":4002,"client_id":1}'
+          <label className="row">
+            <input
+              type="checkbox"
+              checked={useSavedCredentials}
+              onChange={(e) => setUseSavedCredentials(e.target.checked)}
             />
+            Use saved credentials
           </label>
-          <p className="muted" style={{ margin: 0 }}>
-            Leave blank to reconnect with saved credentials.
-          </p>
+          {useSavedCredentials ? (
+            <p className="muted" style={{ margin: 0 }}>
+              Reconnect using encrypted credentials stored in your account.
+            </p>
+          ) : (
+            <div className="grid grid-2">
+              <label className="grid">
+                IBKR Host
+                <input value={ibkrHost} onChange={(e) => setIbkrHost(e.target.value)} placeholder="host.docker.internal" />
+              </label>
+              <label className="grid">
+                IBKR Port
+                <input value={ibkrPort} onChange={(e) => setIbkrPort(e.target.value)} inputMode="numeric" placeholder="4002" />
+              </label>
+              <label className="grid">
+                Client ID
+                <input value={ibkrClientId} onChange={(e) => setIbkrClientId(e.target.value)} inputMode="numeric" placeholder="901" />
+              </label>
+              <label className="grid">
+                Underlying Instrument
+                <input
+                  value={underlyingInstrument}
+                  onChange={(e) => setUnderlyingInstrument(e.target.value)}
+                  placeholder="IND"
+                />
+              </label>
+              <label className="row">
+                <input
+                  type="checkbox"
+                  checked={delayedMarketData}
+                  onChange={(e) => setDelayedMarketData(e.target.checked)}
+                />
+                Use delayed market data
+              </label>
+            </div>
+          )}
           <button type="submit" disabled={connectMutation.isPending}>
             {connectMutation.isPending ? "Connecting..." : "Reconnect Broker"}
           </button>

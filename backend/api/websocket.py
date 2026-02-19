@@ -49,6 +49,8 @@ async def stream_client(websocket: WebSocket, id: uuid.UUID) -> None:
             last_memory_id = 0
             while True:
                 status_payload = await agent.status(id)
+                if "client_id" in status_payload:
+                    status_payload["client_id"] = str(status_payload["client_id"])
                 await websocket.send_json({"type": "agent_status", "data": status_payload})
 
                 greeks_payload = await _load_greeks_cache(websocket, id)

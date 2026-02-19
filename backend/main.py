@@ -8,7 +8,7 @@ from redis.asyncio import from_url as redis_from_url
 from sqlalchemy import text
 
 from backend.agent.manager import AgentManager
-from backend.api import admin, agent, auth, clients, positions, strategy_templates, trades, websocket
+from backend.api import admin, agent, auth, clients, positions, reference, strategy_templates, trades, websocket
 from backend.config import get_settings
 from backend.db.models import Base
 from backend.db.session import SessionLocal, engine
@@ -54,6 +54,7 @@ app.include_router(positions.router)
 app.include_router(trades.router)
 app.include_router(agent.router)
 app.include_router(strategy_templates.router)
+app.include_router(reference.router)
 app.include_router(websocket.router)
 
 

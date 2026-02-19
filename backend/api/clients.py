@@ -1,5 +1,5 @@
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.auth.jwt import hash_password
@@ -38,12 +38,12 @@ async def onboard_client(payload: OnboardRequest, db: AsyncSession = Depends(get
 async def connect_broker(
     id: uuid.UUID,
     request: Request,
-    payload: BrokerConnectRequest,
+    payload: BrokerConnectRequest | None = Body(default=None),
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db_session),
 ) -> dict:
     assert_client_scope(id, current_client)
-    if payload.broker_credentials:
+    if payload and payload.broker_credentials:
         current_client.encrypted_creds = vault.encrypt(payload.broker_credentials)
         await db.commit()
     try:
@@ -59,7 +59,6 @@ async def connect_broker(
             db=db,
             force_recreate_broker=True,
         )
-        await agent.broker.connect()
     except BrokerError as exc:
         raise broker_http_exception(exc, operation="connect", broker=current_client.broker_type) from exc
     except Exception as exc:  # noqa: BLE001

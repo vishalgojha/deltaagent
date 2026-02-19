@@ -36,33 +36,50 @@ describe("BrokerSettingsPage", () => {
     renderWithProviders(<BrokerSettingsPage clientId="client-1" />);
     await screen.findByText("Broker Connection Health");
 
-    fireEvent.change(screen.getByLabelText("Broker Credentials (JSON, optional)"), {
-      target: { value: '{"host":"localhost","port":4002,"client_id":1}' }
-    });
+    await user.click(screen.getByLabelText("Use saved credentials"));
+    fireEvent.change(screen.getByLabelText("IBKR Host"), { target: { value: "localhost" } });
+    fireEvent.change(screen.getByLabelText("IBKR Port"), { target: { value: "4002" } });
+    fireEvent.change(screen.getByLabelText("Client ID"), { target: { value: "1" } });
     await user.click(screen.getByRole("button", { name: "Reconnect Broker" }));
 
     await waitFor(() =>
       expect(vi.mocked(endpoints.connectBroker)).toHaveBeenCalledWith("client-1", {
         host: "localhost",
         port: 4002,
-        client_id: 1
+        client_id: 1,
+        underlying_instrument: "IND",
+        delayed_market_data: true
       })
     );
     expect(await screen.findByText("Connection successful: connected=true broker=ibkr")).toBeInTheDocument();
   });
 
-  it("blocks submit for invalid JSON and renders error", async () => {
+  it("reconnects with saved credentials by default", async () => {
+    const user = userEvent.setup();
+    vi.mocked(endpoints.connectBroker).mockResolvedValue({
+      connected: true,
+      broker: "ibkr"
+    });
+
+    renderWithProviders(<BrokerSettingsPage clientId="client-1" />);
+    await screen.findByText("Broker Connection Health");
+
+    await user.click(screen.getByRole("button", { name: "Reconnect Broker" }));
+
+    await waitFor(() => expect(vi.mocked(endpoints.connectBroker)).toHaveBeenCalledWith("client-1", undefined));
+  });
+
+  it("blocks submit for invalid numeric fields and renders error", async () => {
     const user = userEvent.setup();
 
     renderWithProviders(<BrokerSettingsPage clientId="client-1" />);
     await screen.findByText("Broker Connection Health");
 
-    fireEvent.change(screen.getByLabelText("Broker Credentials (JSON, optional)"), {
-      target: { value: '{"host"' }
-    });
+    await user.click(screen.getByLabelText("Use saved credentials"));
+    fireEvent.change(screen.getByLabelText("IBKR Port"), { target: { value: "abc" } });
     await user.click(screen.getByRole("button", { name: "Reconnect Broker" }));
 
-    expect(await screen.findByText("Broker credentials must be valid JSON")).toBeInTheDocument();
+    expect(await screen.findByText("IBKR port must be a valid number")).toBeInTheDocument();
     expect(vi.mocked(endpoints.connectBroker)).not.toHaveBeenCalled();
   });
 });

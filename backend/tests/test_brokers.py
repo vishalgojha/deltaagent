@@ -82,11 +82,19 @@ class _FakeChain:
     expirations = {"20260320"}
     strikes = {5000.0, 5050.0}
     exchange = "CME"
+    tradingClass = "ES"
+
+
+class _FakeContractDetails:
+    class contract:  # noqa: N801
+        conId = 12345
+        lastTradeDateOrContractMonth = "202603"
 
 
 class _FakeIB:
     def __init__(self) -> None:
         self.connected = True
+        self.market_data_type: int | None = None
 
     def isConnected(self) -> bool:  # noqa: N802
         return self.connected
@@ -100,8 +108,14 @@ class _FakeIB:
     async def reqSecDefOptParamsAsync(self, *args):
         return [_FakeChain()]
 
+    async def reqContractDetailsAsync(self, *args):
+        return [_FakeContractDetails()]
+
     def placeOrder(self, contract, order):
         return _FakeTrade()
+
+    def reqMarketDataType(self, market_data_type: int):  # noqa: N802
+        self.market_data_type = market_data_type
 
 
 @pytest.mark.asyncio
@@ -147,6 +161,14 @@ async def test_ibkr_get_options_chain_returns_greek_rows() -> None:
     chain = await broker.get_options_chain("ES", "20260320")
     assert len(chain) == 2
     assert chain[0]["call_delta"] == pytest.approx(0.12)
+    assert chain[0]["call_mid"] == pytest.approx(10.15)
+    assert chain[0]["put_mid"] == pytest.approx(10.15)
+
+
+def test_ibkr_pick_target_expiry_uses_nearest_available() -> None:
+    expirations = ["20260320", "20260417", "20260515"]
+    picked = IBKRBroker._pick_target_expiry(expirations, "20260322")
+    assert picked == "20260320"
 
 
 class _FakeHTTPResponse:
@@ -341,3 +363,11 @@ async def test_ibkr_ensure_connected_reconnects_dropped_session() -> None:
 
     assert called["count"] == 1
     assert broker._connected is True
+
+
+def test_ibkr_sets_delayed_market_data_type_when_enabled() -> None:
+    broker = IBKRBroker({"delayed_market_data": True})
+    fake_ib = _FakeIB()
+    broker._ib = fake_ib
+    broker._configure_market_data_type()
+    assert fake_ib.market_data_type == 3
