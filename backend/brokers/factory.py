@@ -10,7 +10,7 @@ def build_broker(
     credentials: dict | None = None,
 ) -> BrokerBase:
     if use_mock:
-        return MockBroker()
+        return MockBroker(credentials=credentials)
     if broker_type == "ibkr":
         return IBKRBroker(credentials=credentials)
     if broker_type == "phillip":

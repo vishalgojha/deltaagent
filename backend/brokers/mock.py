@@ -7,9 +7,11 @@ from backend.brokers.base import BrokerBase, BrokerOrderResult
 
 
 class MockBroker(BrokerBase):
-    def __init__(self) -> None:
+    def __init__(self, credentials: dict | None = None) -> None:
+        self._credentials = credentials or {}
         self._connected = False
-        self._positions: list[dict[str, Any]] = []
+        raw_positions = self._credentials.get("mock_positions", [])
+        self._positions: list[dict[str, Any]] = list(raw_positions) if isinstance(raw_positions, list) else []
         self._next_order = 1000
 
     async def connect(self) -> None:
