@@ -80,6 +80,17 @@ type ToastItem = {
   text: string;
 };
 
+type AuditResult = "ok" | "warn" | "err";
+
+type AuditEntry = {
+  id: string;
+  timestamp: string;
+  actor: "agent" | "user" | "system";
+  action: string;
+  result: AuditResult;
+  detail?: string;
+};
+
 const TIMELINE_STORAGE_VERSION = 1;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -163,6 +174,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
   const [executeConfirmed, setExecuteConfirmed] = useState(false);
   const [showExecuteModal, setShowExecuteModal] = useState(false);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([]);
   const [reconnectInProgress, setReconnectInProgress] = useState(false);
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
   const [reconnectNextRetryIn, setReconnectNextRetryIn] = useState<number | null>(null);
@@ -670,52 +682,19 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
     }, 4500);
   }
 
-  async function onReconnectBroker() {
-    const maxAttempts = 3;
-    let lastError: unknown = null;
-    setReconnectInProgress(true);
-    setReconnectAttempt(0);
-    setReconnectNextRetryIn(null);
-    setReconnectStatusText("starting reconnect sequence");
-
-    const waitWithCountdown = async (seconds: number) => {
-      for (let remaining = seconds; remaining > 0; remaining--) {
-        setReconnectNextRetryIn(remaining);
-        await new Promise((resolve) => window.setTimeout(resolve, 1000));
-      }
-      setReconnectNextRetryIn(null);
+  function addAuditEntry(actor: AuditEntry["actor"], action: string, result: AuditResult, detail?: string) {
+    const entry: AuditEntry = {
+      id: crypto.randomUUID(),
+      timestamp: nowIso(),
+      actor,
+      action,
+      result,
+      detail
     };
-
-    try {
-      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        setReconnectAttempt(attempt);
-        setReconnectStatusText(`attempt ${attempt}/${maxAttempts}`);
-        try {
-          await reconnectBrokerMutation.mutateAsync();
-          setReconnectStatusText(`connected on attempt ${attempt}/${maxAttempts}`);
-          pushToast("ok", `Broker reconnect successful (attempt ${attempt})`);
-          return;
-        } catch (err) {
-          lastError = err;
-          if (attempt >= maxAttempts) break;
-          const backoff = Math.min(6, attempt * 2);
-          setReconnectStatusText(`attempt ${attempt}/${maxAttempts} failed; retrying in ${backoff}s`);
-          pushToast("warn", `Reconnect failed (attempt ${attempt}), retrying...`);
-          await waitWithCountdown(backoff);
-        }
-      }
-      throw lastError;
-    } catch (err) {
-      setReconnectStatusText(`failed after ${maxAttempts} attempts`);
-      pushToast("err", err instanceof Error ? err.message : "Broker reconnect failed");
-    } finally {
-      setReconnectInProgress(false);
-    }
+    setAuditEntries((prev) => [entry, ...prev].slice(0, 10));
   }
 
-  async function copyToastLine(toast: ToastItem) {
-    const prefix = toast.tone === "ok" ? "[OK]" : toast.tone === "warn" ? "[WARN]" : "[ERR]";
-    const line = `${prefix} ${toast.text}`;
+  async function copyLine(line: string) {
     try {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(line);
@@ -730,10 +709,64 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
         document.execCommand("copy");
         document.body.removeChild(area);
       }
-      pushToast("ok", "Toast line copied");
+      pushToast("ok", "Line copied");
     } catch {
       pushToast("err", "Clipboard copy failed");
     }
+  }
+
+  async function onReconnectBroker() {
+    const maxAttempts = 3;
+    let lastError: unknown = null;
+    setReconnectInProgress(true);
+    setReconnectAttempt(0);
+    setReconnectNextRetryIn(null);
+    setReconnectStatusText("starting reconnect sequence");
+    addAuditEntry("user", "reconnect_start", "warn", "Broker reconnect initiated");
+
+    const waitWithCountdown = async (seconds: number) => {
+      for (let remaining = seconds; remaining > 0; remaining--) {
+        setReconnectNextRetryIn(remaining);
+        await new Promise((resolve) => window.setTimeout(resolve, 1000));
+      }
+      setReconnectNextRetryIn(null);
+    };
+
+    try {
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        setReconnectAttempt(attempt);
+        setReconnectStatusText(`attempt ${attempt}/${maxAttempts}`);
+        addAuditEntry("system", "reconnect_attempt", "warn", `attempt ${attempt}/${maxAttempts}`);
+        try {
+          await reconnectBrokerMutation.mutateAsync();
+          setReconnectStatusText(`connected on attempt ${attempt}/${maxAttempts}`);
+          pushToast("ok", `Broker reconnect successful (attempt ${attempt})`);
+          addAuditEntry("system", "reconnect_success", "ok", `connected on attempt ${attempt}/${maxAttempts}`);
+          return;
+        } catch (err) {
+          lastError = err;
+          if (attempt >= maxAttempts) break;
+          const backoff = Math.min(6, attempt * 2);
+          setReconnectStatusText(`attempt ${attempt}/${maxAttempts} failed; retrying in ${backoff}s`);
+          pushToast("warn", `Reconnect failed (attempt ${attempt}), retrying...`);
+          addAuditEntry("system", "reconnect_retry", "warn", `attempt ${attempt} failed; retry in ${backoff}s`);
+          await waitWithCountdown(backoff);
+        }
+      }
+      throw lastError;
+    } catch (err) {
+      setReconnectStatusText(`failed after ${maxAttempts} attempts`);
+      pushToast("err", err instanceof Error ? err.message : "Broker reconnect failed");
+      addAuditEntry("system", "reconnect_failed", "err", err instanceof Error ? err.message : "Broker reconnect failed");
+    } finally {
+      setReconnectInProgress(false);
+    }
+  }
+
+  async function copyToastLine(toast: ToastItem) {
+    const prefix = toast.tone === "ok" ? "[OK]" : toast.tone === "warn" ? "[WARN]" : "[ERR]";
+    const line = `${prefix} ${toast.text}`;
+    await copyLine(line);
   }
 
   async function onApprove(id: number) {
@@ -741,6 +774,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
       const blockReason = haltReason || readinessQuery.data?.last_error || "Execution blocked: readiness checks are failing";
       setError(blockReason);
       pushToast("warn", blockReason);
+      addAuditEntry("user", "proposal_approve_blocked", "warn", blockReason);
       return;
     }
     await approveMutation.mutateAsync(id);
@@ -755,6 +789,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
     if (runId) appendToRun(runId, [item]);
     else appendSystemOutsideRun(item);
     pushToast("ok", `Proposal #${id} approved`);
+    addAuditEntry("user", "proposal_approved", "ok", `proposal_id=${id}`);
   }
 
   async function onExecuteSelectedProposal() {
@@ -767,6 +802,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
     if (mode === "confirmation" && !executeConfirmed) {
       setExecutionPhase("preflight_blocked");
       setExecutionMessage("Confirm execution checkbox to continue.");
+      addAuditEntry("user", "execute_blocked", "warn", "Confirmation checkbox not checked");
       return;
     }
 
@@ -783,14 +819,17 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
       const blockReason = haltReason || readiness?.last_error || "Execution blocked by readiness checks.";
       setExecutionMessage(blockReason);
       pushToast("warn", blockReason);
+      addAuditEntry("system", "preflight_blocked", "warn", blockReason);
       return;
     }
+    addAuditEntry("system", "preflight_pass", "ok", "Readiness checks passed");
 
     try {
       setExecutionPhase("executing");
       setExecutionSentAt(nowIso());
       setExecutionMessage(`Sending Proposal #${selectedProposalId} to broker...`);
       await onApprove(selectedProposalId);
+      addAuditEntry("agent", "order_sent", "ok", `proposal_id=${selectedProposalId}`);
 
       const trades = await tradesQuery.refetch();
       const latestTrade = trades.data?.[0] ?? null;
@@ -801,6 +840,14 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
         latestTrade
           ? `Order sent. Latest status: ${latestTrade.status}${latestTrade.order_id ? ` (Order ${latestTrade.order_id})` : ""}`
           : "Order approval completed. Waiting for broker fill update."
+      );
+      addAuditEntry(
+        "agent",
+        "fill_update",
+        latestTrade ? (mapFillStatus(latestTrade.status) === "rejected" ? "err" : "ok") : "warn",
+        latestTrade
+          ? `status=${latestTrade.status}${latestTrade.order_id ? ` order_id=${latestTrade.order_id}` : ""}`
+          : "no trade row yet"
       );
       pushToast(
         "ok",
@@ -813,6 +860,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
       const failMessage = err instanceof Error ? err.message : "Execution failed";
       setExecutionMessage(failMessage);
       pushToast("err", failMessage);
+      addAuditEntry("agent", "execution_failed", "err", failMessage);
     }
   }
 
@@ -840,6 +888,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
     if (runId) appendToRun(runId, [item]);
     else appendSystemOutsideRun(item);
     pushToast("warn", `Proposal #${id} rejected`);
+    addAuditEntry("user", "proposal_rejected", "warn", `proposal_id=${id}`);
   }
 
   function injectPrompt(prompt: string) {
@@ -876,6 +925,12 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
     const instrument = payload.instrument ? String(payload.instrument) : "-";
     const orderType = payload.order_type ? String(payload.order_type) : "-";
     return `${action} ${symbol} x${qty} (${instrument}, ${orderType})`;
+  }
+
+  function formatAuditLine(entry: AuditEntry): string {
+    const prefix = entry.result === "ok" ? "[OK]" : entry.result === "warn" ? "[WARN]" : "[ERR]";
+    const detail = entry.detail ? ` | ${entry.detail}` : "";
+    return `${entry.timestamp} ${prefix} actor=${entry.actor} action=${entry.action}${detail}`;
   }
 
   useEffect(() => {
@@ -1013,6 +1068,30 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
         </div>
       </section>
 
+      <section className="card">
+        <div className="section-head">
+          <div>
+            <h3>Execution Audit</h3>
+            <p className="muted">Recent actions and outcomes from execution/reconnect flow.</p>
+          </div>
+        </div>
+        <div className="audit-list" style={{ marginTop: 10 }}>
+          {auditEntries.length === 0 && <p className="muted">No audit events yet.</p>}
+          {auditEntries.map((entry) => (
+            <div key={entry.id} className="audit-row">
+              <span className={`audit-result ${entry.result}`}>{entry.result.toUpperCase()}</span>
+              <span className="audit-main">
+                {formatTs(entry.timestamp)} | {entry.actor} | {entry.action}
+                {entry.detail ? ` | ${entry.detail}` : ""}
+              </span>
+              <button type="button" className="toast-copy-btn" onClick={() => void copyLine(formatAuditLine(entry))}>
+                copy
+              </button>
+            </div>
+          ))}
+        </div>
+      </section>
+
       {(activeTab === "operate" || !showAdvanced) && (
         <div className="grid grid-2">
           <section className="card">
@@ -1064,11 +1143,13 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
                       const blockReason = haltReason || readiness.data?.last_error || "Execution blocked by readiness checks.";
                       setExecutionMessage(blockReason);
                       pushToast("warn", blockReason);
+                      addAuditEntry("user", "preflight_blocked", "warn", blockReason);
                       return;
                     }
                     setExecutionPhase("ready");
                     setExecutionMessage("Preflight passed. Ready to execute.");
                     pushToast("ok", "Preflight passed");
+                    addAuditEntry("user", "preflight_pass", "ok", "Manual preflight pass");
                   }}
                 >
                   Run Preflight
