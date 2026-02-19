@@ -143,6 +143,7 @@ describe("AgentConsolePage", () => {
     renderWithProviders(<AgentConsolePage clientId="client-1" token="token-1" />);
     await screen.findByText("Execute Trade");
 
+    await user.click(screen.getByLabelText("I confirm this trade execution"));
     await user.click(screen.getByRole("button", { name: "Execute Trade" }));
 
     await waitFor(() => {
@@ -150,6 +151,30 @@ describe("AgentConsolePage", () => {
     });
     expect(await screen.findByText(/Order OID-303/)).toBeInTheDocument();
     expect(await screen.findByText(/Status: filled/)).toBeInTheDocument();
+  });
+
+  it("blocks execute when confirmation checkbox is not checked", async () => {
+    const user = userEvent.setup();
+    vi.mocked(endpoints.getProposals).mockResolvedValueOnce([
+      {
+        id: 404,
+        timestamp: "2026-02-17T00:00:00Z",
+        trade_payload: { action: "SELL", symbol: "ES", qty: 1 },
+        agent_reasoning: "guard test",
+        status: "pending",
+        resolved_at: null
+      }
+    ]);
+
+    renderWithProviders(<AgentConsolePage clientId="client-1" token="token-1" />);
+    await screen.findByText("Execute Trade");
+
+    const executeButton = screen.getByRole("button", { name: "Execute Trade" });
+    expect(executeButton).toBeDisabled();
+    expect(screen.getByText("Confirm execution checkbox to continue.")).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("I confirm this trade execution"));
+    expect(screen.getByRole("button", { name: "Execute Trade" })).toBeEnabled();
   });
 
   it("restores persisted timeline runs on load", async () => {

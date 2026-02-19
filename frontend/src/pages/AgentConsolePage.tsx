@@ -152,6 +152,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
   const [lastExecutionTrade, setLastExecutionTrade] = useState<Trade | null>(null);
   const [executionSentAt, setExecutionSentAt] = useState<string | null>(null);
   const [executionResolvedAt, setExecutionResolvedAt] = useState<string | null>(null);
+  const [executeConfirmed, setExecuteConfirmed] = useState(false);
   const [showDebugStream, setShowDebugStream] = useState(false);
   const [activeTab, setActiveTab] = useState<"operate" | "timeline" | "debug">("operate");
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -227,6 +228,18 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
   const executionBlocked = !!readinessQuery.data && !readinessQuery.data.ready;
   const haltBlocked = isHalted;
   const effectiveBlocked = executionBlocked || haltBlocked;
+  const executeGuardMessage =
+    haltBlocked
+      ? (haltReason || "Trading is globally halted.")
+      : executionBlocked
+      ? (readinessQuery.data?.last_error || "Execution blocked by readiness checks.")
+      : mode === "confirmation" && !executeConfirmed
+      ? "Confirm execution checkbox to continue."
+      : "";
+  const executeBlockedByGuard =
+    haltBlocked ||
+    executionBlocked ||
+    (mode === "confirmation" && !executeConfirmed);
   const pendingProposals = proposalsQuery.data ?? [];
   const assistantFeed = useMemo(() => {
     const events = runs
@@ -647,6 +660,12 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
       return;
     }
 
+    if (mode === "confirmation" && !executeConfirmed) {
+      setExecutionPhase("preflight_blocked");
+      setExecutionMessage("Confirm execution checkbox to continue.");
+      return;
+    }
+
     setExecutionPhase("idle");
     setExecutionMessage("Running preflight checks...");
     setLastExecutionTrade(null);
@@ -844,23 +863,35 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
                 <button
                   type="button"
                   disabled={
-                    haltBlocked ||
+                    executeBlockedByGuard ||
                     !selectedProposalId ||
                     approveMutation.isPending ||
-                    executionPhase === "executing" ||
-                    executionBlocked
+                    executionPhase === "executing"
                   }
                   onClick={onExecuteSelectedProposal}
                 >
                   {executionPhase === "executing" ? "Executing..." : "Execute Trade"}
                 </button>
               </div>
+              {mode === "confirmation" && (
+                <label className="row" style={{ marginTop: 4 }}>
+                  <input
+                    type="checkbox"
+                    checked={executeConfirmed}
+                    onChange={(event) => setExecuteConfirmed(event.target.checked)}
+                  />
+                  <span className="muted">I confirm this trade execution</span>
+                </label>
+              )}
               <div className="row" style={{ marginTop: 8 }}>
                 <span className="muted">Preflight: {executionBlocked ? "blocked" : "pass"}</span>
                 <span className="muted">Broker: {String(readinessQuery.data?.connected ?? "-")}</span>
                 <span className="muted">Market Data: {String(readinessQuery.data?.market_data_ok ?? "-")}</span>
                 <span className="muted">Risk: {readinessQuery.data?.risk_blocked ? "blocked" : "pass"}</span>
               </div>
+              {executeGuardMessage && (
+                <p style={{ color: "#991b1b", marginTop: 4 }}>{executeGuardMessage}</p>
+              )}
               {executionMessage && <p className="muted" style={{ marginTop: 8 }}>{executionMessage}</p>}
               <div className="row" style={{ marginTop: 4 }}>
                 {(() => {
