@@ -163,6 +163,10 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
   const [executeConfirmed, setExecuteConfirmed] = useState(false);
   const [showExecuteModal, setShowExecuteModal] = useState(false);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const [reconnectInProgress, setReconnectInProgress] = useState(false);
+  const [reconnectAttempt, setReconnectAttempt] = useState(0);
+  const [reconnectNextRetryIn, setReconnectNextRetryIn] = useState<number | null>(null);
+  const [reconnectStatusText, setReconnectStatusText] = useState("");
   const [showDebugStream, setShowDebugStream] = useState(false);
   const [activeTab, setActiveTab] = useState<"operate" | "timeline" | "debug">("operate");
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -667,11 +671,45 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
   }
 
   async function onReconnectBroker() {
+    const maxAttempts = 3;
+    let lastError: unknown = null;
+    setReconnectInProgress(true);
+    setReconnectAttempt(0);
+    setReconnectNextRetryIn(null);
+    setReconnectStatusText("starting reconnect sequence");
+
+    const waitWithCountdown = async (seconds: number) => {
+      for (let remaining = seconds; remaining > 0; remaining--) {
+        setReconnectNextRetryIn(remaining);
+        await new Promise((resolve) => window.setTimeout(resolve, 1000));
+      }
+      setReconnectNextRetryIn(null);
+    };
+
     try {
-      await reconnectBrokerMutation.mutateAsync();
-      pushToast("ok", "Broker reconnect successful");
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        setReconnectAttempt(attempt);
+        setReconnectStatusText(`attempt ${attempt}/${maxAttempts}`);
+        try {
+          await reconnectBrokerMutation.mutateAsync();
+          setReconnectStatusText(`connected on attempt ${attempt}/${maxAttempts}`);
+          pushToast("ok", `Broker reconnect successful (attempt ${attempt})`);
+          return;
+        } catch (err) {
+          lastError = err;
+          if (attempt >= maxAttempts) break;
+          const backoff = Math.min(6, attempt * 2);
+          setReconnectStatusText(`attempt ${attempt}/${maxAttempts} failed; retrying in ${backoff}s`);
+          pushToast("warn", `Reconnect failed (attempt ${attempt}), retrying...`);
+          await waitWithCountdown(backoff);
+        }
+      }
+      throw lastError;
     } catch (err) {
+      setReconnectStatusText(`failed after ${maxAttempts} attempts`);
       pushToast("err", err instanceof Error ? err.message : "Broker reconnect failed");
+    } finally {
+      setReconnectInProgress(false);
     }
   }
 
@@ -938,11 +976,17 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
           <button
             type="button"
             className="secondary"
-            disabled={reconnectBrokerMutation.isPending}
+            disabled={reconnectInProgress || reconnectBrokerMutation.isPending}
             onClick={() => void onReconnectBroker()}
           >
-            {reconnectBrokerMutation.isPending ? "Reconnecting..." : "Reconnect Broker"}
+            {reconnectInProgress ? `Reconnecting ${Math.max(reconnectAttempt, 1)}/3...` : "Reconnect Broker"}
           </button>
+          {(reconnectInProgress || reconnectStatusText) && (
+            <span className="muted" style={{ fontFamily: "var(--font-mono)" }}>
+              reconnect: {reconnectStatusText}
+              {reconnectNextRetryIn !== null ? ` | next in ${reconnectNextRetryIn}s` : ""}
+            </span>
+          )}
           <button type="button" className="secondary" onClick={() => setShowAdvanced((prev) => !prev)}>
             {showAdvanced ? "Hide Advanced" : "Show Advanced"}
           </button>
