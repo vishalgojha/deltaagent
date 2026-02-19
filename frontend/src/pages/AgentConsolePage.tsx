@@ -1255,9 +1255,14 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
 
       {(activeTab === "operate" || !showAdvanced) && (
         <div className="grid grid-2">
-          <section className="card">
+          <section className={`card ${haltBlocked ? "read-only-card" : ""}`}>
         <h3>Trade Assistant</h3>
         <p className="muted">Describe what you want. The system will analyze, propose, and execute only within your safety limits.</p>
+        {haltBlocked && (
+          <p style={{ color: "#fca5a5", marginTop: 6 }}>
+            Read-only mode active: {haltReason || "Global emergency halt is enabled."}
+          </p>
+        )}
 
         <div className="assistant-chat" style={{ marginTop: 10 }}>
           {assistantFeed.length === 0 && <p className="muted">No conversation yet. Start with a simple request like "Hedge delta to neutral".</p>}
@@ -1606,6 +1611,16 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
         </div>
         )}
         {!showAdvanced && error && <p style={{ color: "#991b1b", marginTop: 8 }}>{error}</p>}
+        {haltBlocked && (
+          <div className="read-only-overlay" data-testid="halt-readonly-overlay">
+            <div className="read-only-overlay-panel">
+              <p style={{ margin: 0, fontWeight: 700 }}>READ-ONLY MODE</p>
+              <p className="muted" style={{ marginTop: 6 }}>
+                {haltReason || "Global emergency halt is enabled. Trading actions are locked."}
+              </p>
+            </div>
+          </div>
+        )}
       </section>
 
       {showAdvanced && (

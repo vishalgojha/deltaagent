@@ -413,6 +413,32 @@ pre {
   background: rgba(2, 6, 23, 0.45);
 }
 
+.read-only-card {
+  position: relative;
+}
+
+.read-only-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  background: rgba(15, 23, 42, 0.55);
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 14px;
+}
+
+.read-only-overlay-panel {
+  border: 1px solid rgba(239, 68, 68, 0.65);
+  border-radius: var(--radius-sm);
+  background: rgba(127, 29, 29, 0.78);
+  padding: 10px 12px;
+  width: min(680px, 100%);
+  font-family: var(--font-mono);
+}
+
 .field-error {
   color: #fca5a5;
   font-size: 13px;

@@ -427,6 +427,7 @@ describe("AgentConsolePage", () => {
 
     const sendButton = await screen.findByRole("button", { name: "Send" });
     expect(sendButton).toBeDisabled();
+    expect(screen.getByTestId("halt-readonly-overlay")).toBeInTheDocument();
 
     const approveButton = await screen.findByTestId("approve-proposal-707");
     expect(approveButton).toBeDisabled();
