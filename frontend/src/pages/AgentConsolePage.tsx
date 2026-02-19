@@ -826,7 +826,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
             <div className="proposal-quick-card">
               <p style={{ margin: 0, fontWeight: 700 }}>Execute Trade</p>
               <p className="muted" style={{ marginTop: 6 }}>
-                Flow: Select proposal -> Preflight -> Execute -> Track broker status.
+                Flow: Select proposal, run preflight, execute, then track broker status.
               </p>
               <div className="row" style={{ marginTop: 8 }}>
                 <label>
