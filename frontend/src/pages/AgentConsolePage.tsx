@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   approveProposal,
+  connectBroker,
   getHealth,
   getReadiness,
   getRiskParameters,
@@ -372,6 +373,13 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
     }
   });
 
+  const reconnectBrokerMutation = useMutation({
+    mutationFn: () => connectBroker(clientId),
+    onSuccess: async () => {
+      await readinessQuery.refetch();
+    }
+  });
+
   function startRun(prompt: string): string {
     const runId = crypto.randomUUID();
     const createdAt = nowIso();
@@ -658,6 +666,15 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
     }, 4500);
   }
 
+  async function onReconnectBroker() {
+    try {
+      await reconnectBrokerMutation.mutateAsync();
+      pushToast("ok", "Broker reconnect successful");
+    } catch (err) {
+      pushToast("err", err instanceof Error ? err.message : "Broker reconnect failed");
+    }
+  }
+
   async function copyToastLine(toast: ToastItem) {
     const prefix = toast.tone === "ok" ? "[OK]" : toast.tone === "warn" ? "[WARN]" : "[ERR]";
     const line = `${prefix} ${toast.text}`;
@@ -906,11 +923,26 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
             <p className="metric-label">WebSocket</p>
             <p className="metric-value">{connected ? "connected" : "disconnected"}</p>
           </article>
+          <article className="metric-card">
+            <p className="metric-label">Broker Link</p>
+            <p className="metric-value">{readinessQuery.data?.connected ? "UP" : "DOWN"}</p>
+            <p className="muted" style={{ marginTop: 4 }}>
+              Last check: {formatTs(readinessQuery.data?.updated_at ?? null)}
+            </p>
+          </article>
         </div>
       </section>
 
       <section className="card">
         <div className="row">
+          <button
+            type="button"
+            className="secondary"
+            disabled={reconnectBrokerMutation.isPending}
+            onClick={() => void onReconnectBroker()}
+          >
+            {reconnectBrokerMutation.isPending ? "Reconnecting..." : "Reconnect Broker"}
+          </button>
           <button type="button" className="secondary" onClick={() => setShowAdvanced((prev) => !prev)}>
             {showAdvanced ? "Hide Advanced" : "Show Advanced"}
           </button>
