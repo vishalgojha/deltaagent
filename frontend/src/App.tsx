@@ -56,12 +56,12 @@ function ShellLayout() {
 
   return (
     <div className="layout">
-      <div className="row" style={{ marginBottom: 12 }}>
-        <Link to="/dashboard">Dashboard</Link>
-        <Link to="/agent">Agent Console</Link>
-        <Link to="/settings/broker">Broker Settings</Link>
-        <Link to="/strategy-templates">Strategy Templates</Link>
-        <Link to="/admin/safety">Admin Safety</Link>
+      <div className="shell-nav">
+        <Link className="shell-link" to="/dashboard">Dashboard</Link>
+        <Link className="shell-link" to="/agent">Agent Console</Link>
+        <Link className="shell-link" to="/settings/broker">Broker Settings</Link>
+        <Link className="shell-link" to="/strategy-templates">Strategy Templates</Link>
+        <Link className="shell-link" to="/admin/safety">Admin Safety</Link>
         <button
           className="secondary"
           onClick={() => {
