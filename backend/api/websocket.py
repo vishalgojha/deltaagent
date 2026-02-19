@@ -2,13 +2,13 @@ import asyncio
 import json
 import uuid
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from sqlalchemy import select
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.agent.manager import AgentManager
 from backend.auth.jwt import decode_access_token
 from backend.auth.vault import CredentialVault
-from backend.db.models import AgentMemory, Client
+from backend.db.models import AgentMemory, Client, Trade
 
 
 router = APIRouter(tags=["websocket"])
@@ -47,6 +47,7 @@ async def stream_client(websocket: WebSocket, id: uuid.UUID) -> None:
                 return
             agent = await manager.get_agent(id, client.broker_type, creds, db)
             last_memory_id = 0
+            last_trade_marker: tuple[int, str, float | None] | None = None
             while True:
                 status_payload = await agent.status(id)
                 if "client_id" in status_payload:
@@ -76,6 +77,35 @@ async def stream_client(websocket: WebSocket, id: uuid.UUID) -> None:
                             },
                         }
                     )
+
+                trade_stmt = (
+                    select(Trade)
+                    .where(Trade.client_id == id)
+                    .order_by(desc(Trade.timestamp), desc(Trade.id))
+                    .limit(1)
+                )
+                trade_row = await db.execute(trade_stmt)
+                latest_trade = trade_row.scalar_one_or_none()
+                if latest_trade is not None:
+                    marker = (latest_trade.id, latest_trade.status, latest_trade.fill_price)
+                    if marker != last_trade_marker:
+                        last_trade_marker = marker
+                        await websocket.send_json(
+                            {
+                                "type": "order_status",
+                                "data": {
+                                    "client_id": str(id),
+                                    "trade_id": latest_trade.id,
+                                    "order_id": latest_trade.order_id,
+                                    "symbol": latest_trade.symbol,
+                                    "action": latest_trade.action,
+                                    "qty": latest_trade.qty,
+                                    "status": latest_trade.status,
+                                    "fill_price": latest_trade.fill_price,
+                                    "timestamp": latest_trade.timestamp.isoformat(),
+                                },
+                            }
+                        )
                 await asyncio.sleep(1.0)
     except WebSocketDisconnect:
         return

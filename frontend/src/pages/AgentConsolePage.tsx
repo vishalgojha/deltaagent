@@ -74,6 +74,17 @@ type LiveGreeks = {
   updated_at?: string;
 };
 
+type LiveOrderStatus = {
+  trade_id?: number;
+  order_id?: string | null;
+  symbol?: string;
+  action?: string;
+  qty?: number;
+  status?: string;
+  fill_price?: number | null;
+  timestamp?: string;
+};
+
 type ExecutionPhase = "idle" | "preflight_blocked" | "ready" | "executing" | "executed" | "failed";
 type ToastTone = "ok" | "warn" | "err";
 
@@ -192,6 +203,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
   const [timelineStatusFilter, setTimelineStatusFilter] = useState<"all" | "running" | "completed">("all");
   const [liveStatus, setLiveStatus] = useState<LiveAgentStatus | null>(null);
   const [liveGreeks, setLiveGreeks] = useState<LiveGreeks | null>(null);
+  const [liveOrderStatus, setLiveOrderStatus] = useState<LiveOrderStatus | null>(null);
   const [debugEvents, setDebugEvents] = useState<Array<{ id: string; text: string; payload?: Record<string, unknown>; createdAt: string }>>(
     []
   );
@@ -315,6 +327,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
     setResolvedProposals({});
     setLiveStatus(null);
     setLiveGreeks(null);
+    setLiveOrderStatus(null);
     setDebugEvents([]);
     setExpandedToolItems({});
     setExpandedWorkflowSteps({});
@@ -578,6 +591,38 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
     if (eventType === "greeks" && isRecord(lastEvent.data)) {
       const eventPayload: Record<string, unknown> = lastEvent.data;
       setLiveGreeks(eventPayload);
+      if (showDebugStream) {
+        setDebugEvents((prev) =>
+          [{ id: crypto.randomUUID(), text: eventType, payload: eventPayload, createdAt: nowIso() }, ...prev].slice(0, 50)
+        );
+      }
+      return;
+    }
+    if (eventType === "order_status" && isRecord(lastEvent.data)) {
+      const eventPayload: Record<string, unknown> = lastEvent.data;
+      setLiveOrderStatus(eventPayload);
+      setLastExecutionTrade((prev) => ({
+        id: Number(eventPayload.trade_id ?? prev?.id ?? 0),
+        timestamp: String(eventPayload.timestamp ?? prev?.timestamp ?? nowIso()),
+        action: String(eventPayload.action ?? prev?.action ?? "-"),
+        symbol: String(eventPayload.symbol ?? prev?.symbol ?? "-"),
+        instrument: String(prev?.instrument ?? "FOP"),
+        qty: Number(eventPayload.qty ?? prev?.qty ?? 0),
+        fill_price: eventPayload.fill_price == null ? prev?.fill_price ?? null : Number(eventPayload.fill_price),
+        order_id: eventPayload.order_id == null ? prev?.order_id ?? null : String(eventPayload.order_id),
+        agent_reasoning: String(prev?.agent_reasoning ?? ""),
+        mode: String(prev?.mode ?? mode),
+        status: String(eventPayload.status ?? prev?.status ?? "submitted"),
+        pnl: Number(prev?.pnl ?? 0)
+      }));
+      setExecutionPhase("executed");
+      setExecutionResolvedAt(String(eventPayload.timestamp ?? nowIso()));
+      addAuditEntry(
+        "system",
+        "order_status_stream",
+        mapFillStatus(String(eventPayload.status ?? "")) === "rejected" ? "err" : "ok",
+        `status=${String(eventPayload.status ?? "")}${eventPayload.order_id ? ` order_id=${String(eventPayload.order_id)}` : ""}`
+      );
       if (showDebugStream) {
         setDebugEvents((prev) =>
           [{ id: crypto.randomUUID(), text: eventType, payload: eventPayload, createdAt: nowIso() }, ...prev].slice(0, 50)
