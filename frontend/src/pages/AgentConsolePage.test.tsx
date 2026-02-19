@@ -79,7 +79,7 @@ describe("AgentConsolePage", () => {
     await waitFor(() => {
       expect(vi.mocked(endpoints.approveProposal)).toHaveBeenCalledWith("client-1", 101);
     });
-    expect(await screen.findByText("Approved")).toBeInTheDocument();
+    expect(await screen.findByText("Proposal #101 approved.")).toBeInTheDocument();
   });
 
   it("rejects a pending proposal", async () => {
@@ -105,7 +105,7 @@ describe("AgentConsolePage", () => {
     await waitFor(() => {
       expect(vi.mocked(endpoints.rejectProposal)).toHaveBeenCalledWith("client-1", 202);
     });
-    expect(await screen.findByText("Rejected")).toBeInTheDocument();
+    expect(await screen.findByText("Proposal #202 rejected.")).toBeInTheDocument();
   });
 
   it("executes selected proposal from simple flow and shows latest trade status", async () => {
@@ -141,7 +141,7 @@ describe("AgentConsolePage", () => {
     ]);
 
     renderWithProviders(<AgentConsolePage clientId="client-1" token="token-1" />);
-    await screen.findByText("Execute Trade");
+    await screen.findByRole("button", { name: "Execute Trade" });
 
     await user.click(screen.getByLabelText("I confirm this trade execution"));
     await user.click(screen.getByRole("button", { name: "Execute Trade" }));
@@ -167,7 +167,7 @@ describe("AgentConsolePage", () => {
     ]);
 
     renderWithProviders(<AgentConsolePage clientId="client-1" token="token-1" />);
-    await screen.findByText("Execute Trade");
+    await screen.findByRole("button", { name: "Execute Trade" });
 
     const executeButton = screen.getByRole("button", { name: "Execute Trade" });
     expect(executeButton).toBeDisabled();
@@ -332,7 +332,8 @@ describe("AgentConsolePage", () => {
 
     await user.click(approveButton);
     expect(vi.mocked(endpoints.approveProposal)).not.toHaveBeenCalled();
-    expect(await screen.findByText("Market data unavailable")).toBeInTheDocument();
+    const marketDataErrors = await screen.findAllByText("Market data unavailable");
+    expect(marketDataErrors.length).toBeGreaterThan(0);
   });
 
   it("blocks send and approve when global halt is active", async () => {
@@ -362,11 +363,7 @@ describe("AgentConsolePage", () => {
     expect(vi.mocked(endpoints.approveProposal)).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole("button", { name: "Show Advanced" }));
-    expect(
-      await screen.findByText((text, node) => {
-        if (!node) return false;
-        return node.textContent?.includes("Emergency halt enabled by admin") ?? false;
-      })
-    ).toBeInTheDocument();
+    const haltMessages = await screen.findAllByText(/Emergency halt enabled by admin/);
+    expect(haltMessages.length).toBeGreaterThan(0);
   });
 });
