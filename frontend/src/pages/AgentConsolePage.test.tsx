@@ -67,12 +67,12 @@ describe("AgentConsolePage", () => {
 
     renderWithProviders(<AgentConsolePage clientId="client-1" token="token-1" />);
 
-    await screen.findByText("No timeline entries yet.");
+    await screen.findByText("Trade Assistant");
     await user.type(screen.getByPlaceholderText("Ask the agent..."), "hedge delta");
     await user.click(screen.getByRole("button", { name: "Send" }));
 
     expect(await screen.findByText("Proposal #101")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Approve" }));
+    await user.click(screen.getByRole("button", { name: "Approve Proposal" }));
 
     await waitFor(() => {
       expect(vi.mocked(endpoints.approveProposal)).toHaveBeenCalledWith("client-1", 101);
@@ -99,7 +99,7 @@ describe("AgentConsolePage", () => {
     renderWithProviders(<AgentConsolePage clientId="client-1" token="token-1" />);
     expect(await screen.findByText("Proposal #202")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Reject" }));
+    await user.click(screen.getByRole("button", { name: "Reject Proposal" }));
     await waitFor(() => {
       expect(vi.mocked(endpoints.rejectProposal)).toHaveBeenCalledWith("client-1", 202);
     });
@@ -135,6 +135,7 @@ describe("AgentConsolePage", () => {
     vi.mocked(endpoints.getProposals).mockResolvedValue([]);
     renderWithProviders(<AgentConsolePage clientId="client-1" token="token-1" />);
 
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Show Advanced" }));
     const runTitle = await screen.findByText("Run: persisted run");
     expect(runTitle).toBeInTheDocument();
     const runCard = runTitle.closest(".card");
@@ -178,6 +179,7 @@ describe("AgentConsolePage", () => {
 
     renderWithProviders(<AgentConsolePage clientId="client-1" token="token-1" />);
     await screen.findByRole("button", { name: "Send" });
+    await user.click(screen.getByRole("button", { name: "Show Advanced" }));
 
     await user.type(screen.getByPlaceholderText("Ask the agent..."), "hedge");
     await user.click(screen.getByRole("button", { name: "Send" }));
@@ -219,6 +221,7 @@ describe("AgentConsolePage", () => {
 
     renderWithProviders(<AgentConsolePage clientId="client-1" token="token-1" />);
 
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Show Advanced" }));
     expect(await screen.findByText("Live Status")).toBeInTheDocument();
     expect(await screen.findByText(/"delta":\s*0\.1/)).toBeInTheDocument();
     expect(screen.queryByText("Run: Agent event")).not.toBeInTheDocument();
@@ -251,6 +254,7 @@ describe("AgentConsolePage", () => {
     });
 
     renderWithProviders(<AgentConsolePage clientId="client-1" token="token-1" />);
+    await user.click(await screen.findByRole("button", { name: "Show Advanced" }));
     expect(await screen.findByText("Execution Readiness")).toBeInTheDocument();
     const approveButton = await screen.findByRole("button", { name: "Approve" });
     expect(approveButton).toBeDisabled();
@@ -280,7 +284,7 @@ describe("AgentConsolePage", () => {
     const sendButton = await screen.findByRole("button", { name: "Send" });
     expect(sendButton).toBeDisabled();
 
-    const approveButton = await screen.findByRole("button", { name: "Approve" });
+    const approveButton = await screen.findByRole("button", { name: "Approve Proposal" });
     expect(approveButton).toBeDisabled();
 
     await user.click(approveButton);

@@ -750,6 +750,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
           />
         </form>
 
+        {showAdvanced && (
         <div style={{ marginTop: 14, borderTop: "1px solid rgba(148,163,184,0.25)", paddingTop: 12 }}>
         <h3>Agent Controls</h3>
         <div className="row">
@@ -932,8 +933,11 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
         </div>
         {error && <p style={{ color: "#991b1b" }}>{error}</p>}
         </div>
+        )}
+        {!showAdvanced && error && <p style={{ color: "#991b1b", marginTop: 8 }}>{error}</p>}
       </section>
 
+      {showAdvanced && (
       <section className="card">
         <h3>Recent Timeline</h3>
         <p className="muted">Most recent runs. Open Timeline tab for full history and filters.</p>
@@ -1016,6 +1020,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
           ))}
         </div>
       </section>
+      )}
         </div>
       )}
 
