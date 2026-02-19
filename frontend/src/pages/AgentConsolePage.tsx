@@ -188,6 +188,12 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
     refetchInterval: 10000
   });
 
+  const tradesQuery = useQuery({
+    queryKey: ["trades", clientId],
+    queryFn: () => getTrades(clientId),
+    refetchInterval: executionPhase === "executing" ? 3000 : false
+  });
+
   const healthQuery = useQuery({
     queryKey: ["api-health"],
     queryFn: getHealth,
@@ -514,6 +520,15 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
   }, [lastEvent, showDebugStream]);
 
   useEffect(() => {
+    if (!tradesQuery.data || tradesQuery.data.length === 0) return;
+    setLastExecutionTrade(tradesQuery.data[0]);
+    if (executionPhase === "executing") {
+      setExecutionPhase("executed");
+      setExecutionResolvedAt(tradesQuery.data[0].timestamp ?? nowIso());
+    }
+  }, [tradesQuery.data, executionPhase]);
+
+  useEffect(() => {
     if (pendingProposals.length === 0) {
       setSelectedProposalId(null);
       return;
@@ -652,8 +667,8 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
       setExecutionMessage(`Sending Proposal #${selectedProposalId} to broker...`);
       await onApprove(selectedProposalId);
 
-      const trades = await getTrades(clientId);
-      const latestTrade = trades[0] ?? null;
+      const trades = await tradesQuery.refetch();
+      const latestTrade = trades.data?.[0] ?? null;
       setLastExecutionTrade(latestTrade);
       setExecutionResolvedAt(latestTrade?.timestamp ?? nowIso());
       setExecutionPhase("executed");
@@ -859,11 +874,11 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
                     <div className="grid" style={{ width: "100%" }}>
                       <div className="row">
                         <span className="muted">Lifecycle:</span>
-                        <span style={{ fontWeight: pendingActive ? 700 : 500 }}>Pending</span>
-                        <span style={{ fontWeight: sentActive ? 700 : 500 }}>Sent to broker</span>
-                        <span style={{ fontWeight: partialActive ? 700 : 500 }}>Partially filled</span>
-                        <span style={{ fontWeight: filledActive ? 700 : 500 }}>Filled</span>
-                        <span style={{ fontWeight: rejectedActive ? 700 : 500 }}>Rejected</span>
+                        <span className={`lifecycle-chip ${pendingActive ? "active pending" : ""}`}>Pending</span>
+                        <span className={`lifecycle-chip ${sentActive ? "active sent" : ""}`}>Sent to broker</span>
+                        <span className={`lifecycle-chip ${partialActive ? "active partial" : ""}`}>Partially filled</span>
+                        <span className={`lifecycle-chip ${filledActive ? "active filled" : ""}`}>Filled</span>
+                        <span className={`lifecycle-chip ${rejectedActive ? "active rejected" : ""}`}>Rejected</span>
                       </div>
                       <div className="row">
                         <span className="muted">Sent At: {formatTs(executionSentAt)}</span>
