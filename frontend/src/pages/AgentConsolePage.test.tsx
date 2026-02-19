@@ -256,4 +256,32 @@ describe("AgentConsolePage", () => {
     expect(vi.mocked(endpoints.approveProposal)).not.toHaveBeenCalled();
     expect(await screen.findByText("Market data unavailable")).toBeInTheDocument();
   });
+
+  it("blocks send and approve when global halt is active", async () => {
+    const user = userEvent.setup();
+    vi.mocked(endpoints.getProposals).mockResolvedValueOnce([
+      {
+        id: 707,
+        timestamp: "2026-02-17T00:00:00Z",
+        trade_payload: { action: "SELL", symbol: "ES", qty: 1 },
+        agent_reasoning: "halt test",
+        status: "pending",
+        resolved_at: null
+      }
+    ]);
+
+    renderWithProviders(
+      <AgentConsolePage clientId="client-1" token="token-1" isHalted haltReason="Emergency halt enabled by admin" />
+    );
+
+    const sendButton = await screen.findByRole("button", { name: "Send" });
+    expect(sendButton).toBeDisabled();
+
+    const approveButton = await screen.findByRole("button", { name: "Approve" });
+    expect(approveButton).toBeDisabled();
+
+    await user.click(approveButton);
+    expect(vi.mocked(endpoints.approveProposal)).not.toHaveBeenCalled();
+    expect(await screen.findByText("Emergency halt enabled by admin")).toBeInTheDocument();
+  });
 });

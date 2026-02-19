@@ -16,7 +16,7 @@ import { getApiBaseUrl } from "../api/client";
 import type { ChatResponse } from "../types";
 import { useAgentStream } from "../hooks/useAgentStream";
 
-type Props = { clientId: string; token: string };
+type Props = { clientId: string; token: string; isHalted?: boolean; haltReason?: string };
 
 type TimelineKind = "user" | "assistant" | "tool_call" | "tool_result" | "proposal" | "status" | "system";
 type RunStatus = "running" | "completed";
@@ -133,7 +133,7 @@ function summarizeRunTools(run: TimelineRun | null): ToolStep[] {
   return steps;
 }
 
-export function AgentConsolePage({ clientId, token }: Props) {
+export function AgentConsolePage({ clientId, token, isHalted = false, haltReason = "" }: Props) {
   const queryClient = useQueryClient();
   const [message, setMessage] = useState("");
   const [mode, setModeUi] = useState<"confirmation" | "autonomous">("confirmation");
@@ -205,6 +205,8 @@ export function AgentConsolePage({ clientId, token }: Props) {
     [currentRun]
   );
   const executionBlocked = !!readinessQuery.data && !readinessQuery.data.ready;
+  const haltBlocked = isHalted;
+  const effectiveBlocked = executionBlocked || haltBlocked;
 
   useEffect(() => {
     setRuns([]);
@@ -514,6 +516,10 @@ export function AgentConsolePage({ clientId, token }: Props) {
   async function onSend(event: FormEvent) {
     event.preventDefault();
     setError("");
+    if (haltBlocked) {
+      setError(haltReason || "Trading is globally halted");
+      return;
+    }
     const trimmed = message.trim();
     if (!trimmed) return;
 
@@ -559,8 +565,8 @@ export function AgentConsolePage({ clientId, token }: Props) {
   }
 
   async function onApprove(id: number) {
-    if (executionBlocked) {
-      setError(readinessQuery.data?.last_error || "Execution blocked: readiness checks are failing");
+    if (effectiveBlocked) {
+      setError(haltReason || readinessQuery.data?.last_error || "Execution blocked: readiness checks are failing");
       return;
     }
     await approveMutation.mutateAsync(id);
@@ -655,9 +661,11 @@ export function AgentConsolePage({ clientId, token }: Props) {
             <span className="muted">Market Data: {String(readinessQuery.data?.market_data_ok ?? "-")}</span>
             <span className="muted">Risk Blocked: {String(readinessQuery.data?.risk_blocked ?? "-")}</span>
           </div>
-          {(executionBlocked || readinessQuery.isError) && (
+          {(effectiveBlocked || readinessQuery.isError) && (
             <p style={{ color: "#991b1b", margin: "6px 0 0 0" }}>
-              {readinessQuery.isError
+              {haltBlocked
+                ? (haltReason || "Trading is globally halted.")
+                : readinessQuery.isError
                 ? "Execution checks unavailable. Fix readiness before approving trades."
                 : (readinessQuery.data?.last_error || "Execution blocked by readiness checks.")}
             </p>
@@ -684,7 +692,7 @@ export function AgentConsolePage({ clientId, token }: Props) {
             value={message}
             onChange={(e) => setMessage(e.target.value)}
           />
-          <button type="submit">Send</button>
+          <button type="submit" disabled={haltBlocked}>Send</button>
         </form>
         <div className="row" style={{ marginTop: 6 }}>
           <button
@@ -832,7 +840,7 @@ export function AgentConsolePage({ clientId, token }: Props) {
                       {item.payload && <pre>{JSON.stringify(item.payload, null, 2)}</pre>}
                       {isProposalPending && item.proposalId !== undefined && (
                         <div className="row">
-                          <button disabled={executionBlocked} onClick={() => onApprove(item.proposalId!)}>
+                          <button disabled={effectiveBlocked} onClick={() => onApprove(item.proposalId!)}>
                             Approve
                           </button>
                           <button className="danger" onClick={() => onReject(item.proposalId!)}>

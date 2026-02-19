@@ -124,3 +124,47 @@ async def test_readiness_endpoint_response_contract(monkeypatch: pytest.MonkeyPa
     assert payload["connected"] is True
     assert payload["market_data_ok"] is True
     assert payload["ready"] is True
+
+
+@pytest.mark.asyncio
+async def test_client_can_fetch_emergency_halt_status(monkeypatch: pytest.MonkeyPatch) -> None:
+    client_id = uuid.uuid4()
+    app = FastAPI()
+    app.include_router(agent_api.router)
+    app.state.agent_manager = _FakeManager()
+    app.state.emergency_halt = SimpleNamespace(
+        get=lambda: None
+    )
+
+    async def _get_halt_state() -> SimpleNamespace:
+        return SimpleNamespace(
+            halted=True,
+            reason="manual halt",
+            updated_at="2026-02-19T00:00:00Z",
+            updated_by="admin",
+        )
+
+    app.state.emergency_halt = SimpleNamespace(get=_get_halt_state)
+
+    async def override_current_client() -> SimpleNamespace:
+        return SimpleNamespace(
+            id=client_id,
+            broker_type="ibkr",
+            encrypted_creds="encrypted-creds",
+            mode="confirmation",
+        )
+
+    async def override_db_session():
+        yield None
+
+    app.dependency_overrides[get_current_client] = override_current_client
+    app.dependency_overrides[get_db_session] = override_db_session
+    monkeypatch.setattr(agent_api.vault, "decrypt", lambda _ciphertext: {})
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http:
+        response = await http.get(f"/clients/{client_id}/agent/emergency-halt")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["halted"] is True
+    assert payload["reason"] == "manual halt"

@@ -17,6 +17,7 @@ from backend.schemas import (
     ApproveRejectResponse,
     ChatResponse,
     ChatRequest,
+    EmergencyHaltResponse,
     ModeUpdateRequest,
     ParametersUpdateRequest,
     ProposalOut,
@@ -173,6 +174,22 @@ async def status(
         raise broker_http_exception(exc, operation="get_agent", broker=current_client.broker_type) from exc
     payload = await agent.status(id)
     return AgentStatusOut(**payload)
+
+
+@router.get("/{id}/agent/emergency-halt", response_model=EmergencyHaltResponse)
+async def get_emergency_halt_status(
+    id: uuid.UUID,
+    request: Request,
+    current_client: Client = Depends(get_current_client),
+) -> EmergencyHaltResponse:
+    assert_client_scope(id, current_client)
+    state = await request.app.state.emergency_halt.get()
+    return EmergencyHaltResponse(
+        halted=state.halted,
+        reason=state.reason,
+        updated_at=state.updated_at,
+        updated_by=state.updated_by,
+    )
 
 
 @router.get("/{id}/agent/readiness", response_model=AgentReadinessOut)

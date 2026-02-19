@@ -83,7 +83,12 @@ function PnlCurveChart({ points }: { points: Array<{ underlying: number; pnl: nu
   );
 }
 
-export function StrategyTemplatesPage() {
+type Props = {
+  isHalted?: boolean;
+  haltReason?: string;
+};
+
+export function StrategyTemplatesPage({ isHalted = false, haltReason = "" }: Props) {
   const qc = useQueryClient();
   const [form, setForm] = useState<StrategyTemplateForm>(initialForm);
   const [selectedTemplate, setSelectedTemplate] = useState<number | null>(null);
@@ -231,6 +236,10 @@ export function StrategyTemplatesPage() {
   }
 
   async function onExecute() {
+    if (isHalted) {
+      setError(haltReason || "Trading is globally halted");
+      return;
+    }
     if (!selectedTemplate) {
       setError("Select a template first");
       return;
@@ -392,10 +401,11 @@ export function StrategyTemplatesPage() {
             <button className="secondary" onClick={onPreview} disabled={!selectedTemplate || resolveMutation.isPending}>
               {resolveMutation.isPending ? "Loading..." : "Load + Preview"}
             </button>
-            <button onClick={onExecute} disabled={!selectedTemplate || executeMutation.isPending}>
+            <button onClick={onExecute} disabled={isHalted || !selectedTemplate || executeMutation.isPending}>
               {executeMutation.isPending ? "Executing..." : "Execute"}
             </button>
           </div>
+          {isHalted && <p style={{ color: "#991b1b", margin: 0 }}>{haltReason || "Trading is globally halted."}</p>}
           {selected && <p className="muted">Underlying {selected.underlying_symbol}, type {selected.strategy_type}</p>}
         </div>
 

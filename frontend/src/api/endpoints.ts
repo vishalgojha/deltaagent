@@ -4,6 +4,7 @@ import type {
   AgentReadiness,
   ChatResponse,
   ClientOut,
+  EmergencyHaltStatus,
   LoginResponse,
   Position,
   Proposal,
@@ -54,6 +55,24 @@ export function getStatus(clientId: string) {
 
 export function getReadiness(clientId: string) {
   return api<AgentReadiness>(`/clients/${clientId}/agent/readiness`);
+}
+
+export function getEmergencyHaltStatus(clientId: string) {
+  return api<EmergencyHaltStatus>(`/clients/${clientId}/agent/emergency-halt`);
+}
+
+export function getAdminEmergencyHalt(adminKey: string) {
+  return api<EmergencyHaltStatus>("/admin/emergency-halt", {
+    headers: { "X-Admin-Key": adminKey }
+  });
+}
+
+export function setAdminEmergencyHalt(adminKey: string, halted: boolean, reason: string) {
+  return api<EmergencyHaltStatus>("/admin/emergency-halt", {
+    method: "POST",
+    headers: { "X-Admin-Key": adminKey },
+    body: JSON.stringify({ halted, reason })
+  });
 }
 
 export function getPositions(clientId: string) {

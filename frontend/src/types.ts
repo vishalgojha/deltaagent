@@ -23,6 +23,13 @@ export type AgentReadiness = {
   updated_at: string;
 };
 
+export type EmergencyHaltStatus = {
+  halted: boolean;
+  reason: string;
+  updated_at: string;
+  updated_by: string;
+};
+
 export type ChatToolCall = {
   tool_use_id?: string;
   name?: string;
