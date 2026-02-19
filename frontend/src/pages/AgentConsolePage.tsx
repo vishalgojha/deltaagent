@@ -185,6 +185,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
   const [lastExecutionTrade, setLastExecutionTrade] = useState<Trade | null>(null);
   const [executionSentAt, setExecutionSentAt] = useState<string | null>(null);
   const [executionResolvedAt, setExecutionResolvedAt] = useState<string | null>(null);
+  const [executionSource, setExecutionSource] = useState<"websocket" | "polling" | "none">("none");
   const [executeConfirmed, setExecuteConfirmed] = useState(false);
   const [showExecuteModal, setShowExecuteModal] = useState(false);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
@@ -328,6 +329,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
     setLiveStatus(null);
     setLiveGreeks(null);
     setLiveOrderStatus(null);
+    setExecutionSource("none");
     setDebugEvents([]);
     setExpandedToolItems({});
     setExpandedWorkflowSteps({});
@@ -617,6 +619,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
       }));
       setExecutionPhase("executed");
       setExecutionResolvedAt(String(eventPayload.timestamp ?? nowIso()));
+      setExecutionSource("websocket");
       addAuditEntry(
         "system",
         "order_status_stream",
@@ -649,11 +652,12 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
   useEffect(() => {
     if (!tradesQuery.data || tradesQuery.data.length === 0) return;
     setLastExecutionTrade(tradesQuery.data[0]);
-    if (executionPhase === "executing") {
+    if (executionPhase === "executing" && executionSource !== "websocket") {
       setExecutionPhase("executed");
       setExecutionResolvedAt(tradesQuery.data[0].timestamp ?? nowIso());
+      setExecutionSource("polling");
     }
-  }, [tradesQuery.data, executionPhase]);
+  }, [tradesQuery.data, executionPhase, executionSource]);
 
   useEffect(() => {
     if (pendingProposals.length === 0) {
@@ -915,6 +919,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
     setLastExecutionTrade(null);
     setExecutionSentAt(null);
     setExecutionResolvedAt(null);
+    setExecutionSource("none");
 
     const readinessResult = await readinessQuery.refetch();
     const readiness = readinessResult.data;
@@ -939,6 +944,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
       const latestTrade = trades.data?.[0] ?? null;
       setLastExecutionTrade(latestTrade);
       setExecutionResolvedAt(latestTrade?.timestamp ?? nowIso());
+      setExecutionSource(latestTrade ? "polling" : "none");
       setExecutionPhase("executed");
       setExecutionMessage(
         latestTrade
@@ -1423,6 +1429,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
                         <span className="muted">Sent At: {formatTs(executionSentAt)}</span>
                         <span className="muted">Resolved At: {formatTs(executionResolvedAt)}</span>
                         <span className="muted">Status: {lastExecutionTrade?.status ?? "-"}</span>
+                        <span className="muted">Source: {executionSource}</span>
                         {lastExecutionTrade?.order_id && <span className="muted">Order: {lastExecutionTrade.order_id}</span>}
                         {lastExecutionTrade?.fill_price !== null && lastExecutionTrade?.fill_price !== undefined && (
                           <span className="muted">Avg Fill: {lastExecutionTrade.fill_price}</span>
