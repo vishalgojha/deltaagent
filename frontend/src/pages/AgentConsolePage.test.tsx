@@ -228,6 +228,27 @@ describe("AgentConsolePage", () => {
     });
   });
 
+  it("focuses Cancel when trade ticket modal opens", async () => {
+    const user = userEvent.setup();
+    vi.mocked(endpoints.getProposals).mockResolvedValueOnce([
+      {
+        id: 606,
+        timestamp: "2026-02-17T00:00:00Z",
+        trade_payload: { action: "SELL", symbol: "ES", qty: 1 },
+        agent_reasoning: "focus test",
+        status: "pending",
+        resolved_at: null
+      }
+    ]);
+
+    renderWithProviders(<AgentConsolePage clientId="client-1" token="token-1" />);
+    await user.click(screen.getByLabelText("I confirm this trade execution"));
+    await user.click(screen.getByRole("button", { name: "Execute Trade" }));
+
+    expect(await screen.findByRole("dialog", { name: "Trade Ticket Confirmation" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
+  });
+
   it("restores persisted timeline runs on load", async () => {
     localStorage.setItem(
       "ta_agent_timeline_client-1",

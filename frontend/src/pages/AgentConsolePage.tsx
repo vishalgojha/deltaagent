@@ -169,6 +169,8 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
   const proposalRunMap = useRef<Map<number, string>>(new Map());
   const latestStatusRef = useRef("");
   const activeRunIdRef = useRef<string | null>(null);
+  const executeModalRef = useRef<HTMLElement | null>(null);
+  const executeCancelButtonRef = useRef<HTMLButtonElement | null>(null);
   const { connected, lastEvent } = useAgentStream(clientId, token);
 
   const proposalsQuery = useQuery({
@@ -770,12 +772,37 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
 
   useEffect(() => {
     if (!showExecuteModal) return;
+    executeCancelButtonRef.current?.focus();
 
     function onModalKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         event.preventDefault();
         setShowExecuteModal(false);
         return;
+      }
+      if (event.key === "Tab") {
+        const root = executeModalRef.current;
+        if (!root) return;
+        const focusable = Array.from(
+          root.querySelectorAll<HTMLElement>(
+            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+          )
+        ).filter((el) => !el.hasAttribute("disabled"));
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        const active = document.activeElement as HTMLElement | null;
+
+        if (event.shiftKey && active === first) {
+          event.preventDefault();
+          last.focus();
+          return;
+        }
+        if (!event.shiftKey && active === last) {
+          event.preventDefault();
+          first.focus();
+          return;
+        }
       }
       if (event.key === "Enter") {
         event.preventDefault();
@@ -1387,7 +1414,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
 
       {showExecuteModal && selectedProposal && (
         <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Trade Ticket Confirmation">
-          <section className="modal-card">
+          <section className="modal-card" ref={executeModalRef}>
             <h3 style={{ marginBottom: 8 }}>Trade Ticket</h3>
             <p className="muted">Review once before sending to broker.</p>
             <div className="grid" style={{ marginTop: 10 }}>
@@ -1400,7 +1427,12 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
             </div>
             {executeGuardMessage && <p style={{ color: "#991b1b", marginTop: 10 }}>{executeGuardMessage}</p>}
             <div className="row" style={{ marginTop: 12, justifyContent: "flex-end" }}>
-              <button type="button" className="secondary" onClick={() => setShowExecuteModal(false)}>
+              <button
+                type="button"
+                className="secondary"
+                ref={executeCancelButtonRef}
+                onClick={() => setShowExecuteModal(false)}
+              >
                 Cancel
               </button>
               <button
