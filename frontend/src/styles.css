@@ -274,6 +274,26 @@ pre {
   background: rgba(153, 27, 27, 0.42);
 }
 
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(2, 6, 23, 0.68);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+}
+
+.modal-card {
+  width: min(560px, 100%);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+  padding: 16px;
+  box-shadow: var(--shadow);
+}
+
 .field-error {
   color: #fca5a5;
   font-size: 13px;

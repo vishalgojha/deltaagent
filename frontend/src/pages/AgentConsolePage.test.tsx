@@ -145,6 +145,8 @@ describe("AgentConsolePage", () => {
 
     await user.click(screen.getByLabelText("I confirm this trade execution"));
     await user.click(screen.getByRole("button", { name: "Execute Trade" }));
+    expect(await screen.findByRole("dialog", { name: "Trade Ticket Confirmation" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Confirm Execute" }));
 
     await waitFor(() => {
       expect(vi.mocked(endpoints.approveProposal)).toHaveBeenCalledWith("client-1", 303);

@@ -153,6 +153,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
   const [executionSentAt, setExecutionSentAt] = useState<string | null>(null);
   const [executionResolvedAt, setExecutionResolvedAt] = useState<string | null>(null);
   const [executeConfirmed, setExecuteConfirmed] = useState(false);
+  const [showExecuteModal, setShowExecuteModal] = useState(false);
   const [showDebugStream, setShowDebugStream] = useState(false);
   const [activeTab, setActiveTab] = useState<"operate" | "timeline" | "debug">("operate");
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -241,6 +242,10 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
     executionBlocked ||
     (mode === "confirmation" && !executeConfirmed);
   const pendingProposals = proposalsQuery.data ?? [];
+  const selectedProposal = useMemo(
+    () => pendingProposals.find((proposal) => proposal.id === selectedProposalId) ?? null,
+    [pendingProposals, selectedProposalId]
+  );
   const assistantFeed = useMemo(() => {
     const events = runs
       .slice()
@@ -702,6 +707,11 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
     }
   }
 
+  function openExecuteModal() {
+    if (executeBlockedByGuard || !selectedProposalId) return;
+    setShowExecuteModal(true);
+  }
+
   async function onReject(id: number) {
     await rejectMutation.mutateAsync(id);
     setResolvedProposals((prev) => ({ ...prev, [id]: "rejected" }));
@@ -868,7 +878,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
                     approveMutation.isPending ||
                     executionPhase === "executing"
                   }
-                  onClick={onExecuteSelectedProposal}
+                  onClick={openExecuteModal}
                 >
                   {executionPhase === "executing" ? "Executing..." : "Execute Trade"}
                 </button>
@@ -1348,6 +1358,39 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
             ))}
           </div>
         </section>
+      )}
+
+      {showExecuteModal && selectedProposal && (
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Trade Ticket Confirmation">
+          <section className="modal-card">
+            <h3 style={{ marginBottom: 8 }}>Trade Ticket</h3>
+            <p className="muted">Review once before sending to broker.</p>
+            <div className="grid" style={{ marginTop: 10 }}>
+              <p><strong>Proposal:</strong> #{selectedProposal.id}</p>
+              <p><strong>Trade:</strong> {summarizeProposalPayload(selectedProposal.trade_payload)}</p>
+              <p><strong>Mode:</strong> {mode}</p>
+              <p><strong>Readiness:</strong> {readinessQuery.data?.ready ? "PASS" : "BLOCKED"}</p>
+              <p><strong>Broker:</strong> {String(readinessQuery.data?.connected ?? "-")}</p>
+              <p><strong>Market Data:</strong> {String(readinessQuery.data?.market_data_ok ?? "-")}</p>
+            </div>
+            {executeGuardMessage && <p style={{ color: "#991b1b", marginTop: 10 }}>{executeGuardMessage}</p>}
+            <div className="row" style={{ marginTop: 12, justifyContent: "flex-end" }}>
+              <button type="button" className="secondary" onClick={() => setShowExecuteModal(false)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={executeBlockedByGuard || approveMutation.isPending || executionPhase === "executing"}
+                onClick={async () => {
+                  setShowExecuteModal(false);
+                  await onExecuteSelectedProposal();
+                }}
+              >
+                Confirm Execute
+              </button>
+            </div>
+          </section>
+        </div>
       )}
     </div>
   );
