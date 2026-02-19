@@ -145,6 +145,7 @@ describe("OnboardingPage", () => {
 
     expect(await screen.findByText("Guided Broker Setup")).toBeInTheDocument();
     expect(await screen.findByText("Enable API socket in IBKR Gateway")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "copy" })).toBeInTheDocument();
     expect(vi.mocked(sessionStore.saveSession)).toHaveBeenCalledWith("token-99", "client-99");
     expect(navigateMock).not.toHaveBeenCalled();
 

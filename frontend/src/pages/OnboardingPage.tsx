@@ -41,6 +41,7 @@ export function OnboardingPage() {
   const [setupMessage, setSetupMessage] = useState("");
   const [setupPreflight, setSetupPreflight] = useState<BrokerPreflight | null>(null);
   const [showContinue, setShowContinue] = useState(false);
+  const [hintCopyStatus, setHintCopyStatus] = useState("");
 
   const onboardingMutation = useMutation({
     mutationFn: async (payload: {
@@ -190,6 +191,28 @@ export function OnboardingPage() {
         err.connectErr instanceof Error ? err.connectErr.message : "Broker connection failed. Check fix hints and retry."
       );
     }
+  }
+
+  async function onCopyHint(hint: string) {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(hint);
+      } else {
+        const area = document.createElement("textarea");
+        area.value = hint;
+        area.setAttribute("readonly", "true");
+        area.style.position = "absolute";
+        area.style.left = "-9999px";
+        document.body.appendChild(area);
+        area.select();
+        document.execCommand("copy");
+        document.body.removeChild(area);
+      }
+      setHintCopyStatus("Hint copied");
+    } catch {
+      setHintCopyStatus("Copy failed");
+    }
+    window.setTimeout(() => setHintCopyStatus(""), 2500);
   }
 
   return (
@@ -398,12 +421,18 @@ export function OnboardingPage() {
                     <div>
                       <strong>Auto-fix hints</strong>
                       {setupPreflight.fix_hints.map((item, idx) => (
-                        <p key={`${item}-${idx}`} className="muted">
-                          {item}
-                        </p>
+                        <div key={`${item}-${idx}`} className="row" style={{ justifyContent: "space-between" }}>
+                          <p className="muted" style={{ margin: 0 }}>
+                            {item}
+                          </p>
+                          <button type="button" className="secondary" onClick={() => void onCopyHint(item)}>
+                            copy
+                          </button>
+                        </div>
                       ))}
                     </div>
                   )}
+                  {hintCopyStatus && <p className="muted" style={{ margin: 0 }}>{hintCopyStatus}</p>}
                 </div>
               )}
             </section>
