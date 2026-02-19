@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   approveProposal,
   getHealth,
+  getReadiness,
   getRiskParameters,
   getStatus,
   getProposals,
@@ -167,6 +168,12 @@ export function AgentConsolePage({ clientId, token }: Props) {
     queryFn: () => getStatus(clientId)
   });
 
+  const readinessQuery = useQuery({
+    queryKey: ["agent-readiness", clientId],
+    queryFn: () => getReadiness(clientId),
+    refetchInterval: 10000
+  });
+
   const healthQuery = useQuery({
     queryKey: ["api-health"],
     queryFn: getHealth,
@@ -197,6 +204,7 @@ export function AgentConsolePage({ clientId, token }: Props) {
     () => (currentRun?.items ?? []).some((item) => item.kind === "assistant"),
     [currentRun]
   );
+  const executionBlocked = !!readinessQuery.data && !readinessQuery.data.ready;
 
   useEffect(() => {
     setRuns([]);
@@ -551,6 +559,10 @@ export function AgentConsolePage({ clientId, token }: Props) {
   }
 
   async function onApprove(id: number) {
+    if (executionBlocked) {
+      setError(readinessQuery.data?.last_error || "Execution blocked: readiness checks are failing");
+      return;
+    }
     await approveMutation.mutateAsync(id);
     setResolvedProposals((prev) => ({ ...prev, [id]: "approved" }));
     const runId = proposalRunMap.current.get(id) ?? activeRunIdRef.current;
@@ -625,6 +637,31 @@ export function AgentConsolePage({ clientId, token }: Props) {
             <span className="muted">Mode: {liveStatus?.mode ?? statusQuery.data?.mode ?? mode}</span>
             <span className="muted">WS: {connected ? "connected" : "disconnected"}</span>
           </div>
+        </div>
+        <div className="card" style={{ marginTop: 10, marginBottom: 0 }}>
+          <p style={{ margin: "0 0 6px 0", fontWeight: 700 }}>Execution Readiness</p>
+          <div className="row">
+            <span className="muted">
+              Ready:{" "}
+              {readinessQuery.isLoading
+                ? "checking..."
+                : readinessQuery.isError
+                  ? "unavailable"
+                  : readinessQuery.data?.ready
+                    ? "yes"
+                    : "no"}
+            </span>
+            <span className="muted">Broker: {String(readinessQuery.data?.connected ?? "-")}</span>
+            <span className="muted">Market Data: {String(readinessQuery.data?.market_data_ok ?? "-")}</span>
+            <span className="muted">Risk Blocked: {String(readinessQuery.data?.risk_blocked ?? "-")}</span>
+          </div>
+          {(executionBlocked || readinessQuery.isError) && (
+            <p style={{ color: "#991b1b", margin: "6px 0 0 0" }}>
+              {readinessQuery.isError
+                ? "Execution checks unavailable. Fix readiness before approving trades."
+                : (readinessQuery.data?.last_error || "Execution blocked by readiness checks.")}
+            </p>
+          )}
         </div>
         <p className="muted" style={{ marginTop: 8, marginBottom: 0 }}>
           Tip: For higher-quality reasoning, OpenAI or Anthropic models usually perform better than local models.
@@ -795,7 +832,9 @@ export function AgentConsolePage({ clientId, token }: Props) {
                       {item.payload && <pre>{JSON.stringify(item.payload, null, 2)}</pre>}
                       {isProposalPending && item.proposalId !== undefined && (
                         <div className="row">
-                          <button onClick={() => onApprove(item.proposalId!)}>Approve</button>
+                          <button disabled={executionBlocked} onClick={() => onApprove(item.proposalId!)}>
+                            Approve
+                          </button>
                           <button className="danger" onClick={() => onReject(item.proposalId!)}>
                             Reject
                           </button>

@@ -17,7 +17,8 @@ vi.mock("../api/endpoints", async () => {
     sendChat: vi.fn(),
     approveProposal: vi.fn(),
     rejectProposal: vi.fn(),
-    setMode: vi.fn()
+    setMode: vi.fn(),
+    getReadiness: vi.fn()
   };
 });
 
@@ -32,6 +33,16 @@ describe("AgentConsolePage", () => {
       healthy: true,
       last_action: null,
       net_greeks: { delta: 0, gamma: 0, theta: 0, vega: 0 }
+    });
+    vi.mocked(endpoints.getReadiness).mockResolvedValue({
+      client_id: "client-1",
+      ready: true,
+      connected: true,
+      market_data_ok: true,
+      mode: "confirmation",
+      risk_blocked: false,
+      last_error: null,
+      updated_at: "2026-02-19T00:00:00Z"
     });
     vi.mocked(endpoints.setMode).mockResolvedValue({ ok: true });
   });
@@ -209,5 +220,40 @@ describe("AgentConsolePage", () => {
     expect(await screen.findByText(/"delta":\s*0\.1/)).toBeInTheDocument();
     expect(screen.queryByText("Run: Agent event")).not.toBeInTheDocument();
     expect(screen.queryByText("Debug Stream Events")).not.toBeInTheDocument();
+  });
+
+  it("blocks approval when execution readiness is red", async () => {
+    const user = userEvent.setup();
+    vi.mocked(endpoints.getProposals)
+      .mockResolvedValueOnce([
+        {
+          id: 909,
+          timestamp: "2026-02-17T00:00:00Z",
+          trade_payload: { action: "SELL", symbol: "ES", qty: 1 },
+          agent_reasoning: "hedge",
+          status: "pending",
+          resolved_at: null
+        }
+      ])
+      .mockResolvedValue([]);
+    vi.mocked(endpoints.getReadiness).mockResolvedValue({
+      client_id: "client-1",
+      ready: false,
+      connected: true,
+      market_data_ok: false,
+      mode: "confirmation",
+      risk_blocked: false,
+      last_error: "Market data unavailable",
+      updated_at: "2026-02-19T00:00:00Z"
+    });
+
+    renderWithProviders(<AgentConsolePage clientId="client-1" token="token-1" />);
+    expect(await screen.findByText("Execution Readiness")).toBeInTheDocument();
+    const approveButton = await screen.findByRole("button", { name: "Approve" });
+    expect(approveButton).toBeDisabled();
+
+    await user.click(approveButton);
+    expect(vi.mocked(endpoints.approveProposal)).not.toHaveBeenCalled();
+    expect(await screen.findByText("Market data unavailable")).toBeInTheDocument();
   });
 });

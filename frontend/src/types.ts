@@ -12,6 +12,17 @@ export type AgentStatus = {
   net_greeks: Record<string, number>;
 };
 
+export type AgentReadiness = {
+  client_id: string;
+  ready: boolean;
+  connected: boolean;
+  market_data_ok: boolean;
+  mode: "confirmation" | "autonomous" | string;
+  risk_blocked: boolean;
+  last_error: string | null;
+  updated_at: string;
+};
+
 export type ChatToolCall = {
   tool_use_id?: string;
   name?: string;

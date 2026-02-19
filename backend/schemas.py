@@ -131,6 +131,17 @@ class AgentStatusOut(BaseModel):
     net_greeks: dict[str, float]
 
 
+class AgentReadinessOut(BaseModel):
+    client_id: uuid.UUID
+    ready: bool
+    connected: bool
+    market_data_ok: bool
+    mode: str
+    risk_blocked: bool
+    last_error: str | None
+    updated_at: datetime
+
+
 class BrokerConnectRequest(BaseModel):
     broker_credentials: dict | None = None
 

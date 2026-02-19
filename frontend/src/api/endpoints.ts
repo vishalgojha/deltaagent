@@ -1,6 +1,7 @@
 import { api } from "./client";
 import type {
   AgentStatus,
+  AgentReadiness,
   ChatResponse,
   ClientOut,
   LoginResponse,
@@ -49,6 +50,10 @@ export function connectBroker(clientId: string, brokerCredentials?: Record<strin
 
 export function getStatus(clientId: string) {
   return api<AgentStatus>(`/clients/${clientId}/agent/status`);
+}
+
+export function getReadiness(clientId: string) {
+  return api<AgentReadiness>(`/clients/${clientId}/agent/readiness`);
 }
 
 export function getPositions(clientId: string) {

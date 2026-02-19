@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,9 +8,11 @@ from backend.api.deps import assert_client_scope, get_current_client
 from backend.api.error_utils import broker_http_exception
 from backend.auth.vault import CredentialVault
 from backend.brokers.base import BrokerError
+from backend.config import get_settings
 from backend.db.models import Client, Proposal
 from backend.db.session import get_db_session
 from backend.schemas import (
+    AgentReadinessOut,
     AgentStatusOut,
     ApproveRejectResponse,
     ChatResponse,
@@ -170,6 +173,83 @@ async def status(
         raise broker_http_exception(exc, operation="get_agent", broker=current_client.broker_type) from exc
     payload = await agent.status(id)
     return AgentStatusOut(**payload)
+
+
+@router.get("/{id}/agent/readiness", response_model=AgentReadinessOut)
+async def readiness(
+    id: uuid.UUID,
+    request: Request,
+    current_client: Client = Depends(get_current_client),
+    db: AsyncSession = Depends(get_db_session),
+) -> AgentReadinessOut:
+    assert_client_scope(id, current_client)
+    settings = get_settings()
+    connected = False
+    market_data_ok = False
+    last_error: str | None = None
+    mode = current_client.mode or "confirmation"
+    risk_blocked = False
+
+    emergency_halt = getattr(request.app.state, "emergency_halt", None)
+    if emergency_halt is not None:
+        state = await emergency_halt.get()
+        if state.halted:
+            risk_blocked = True
+            last_error = state.reason or "Emergency trading halt is active"
+
+    if mode == "autonomous" and not settings.autonomous_enabled:
+        risk_blocked = True
+        if not last_error:
+            last_error = "Autonomous mode disabled by system policy"
+
+    creds = _decrypt_creds(current_client)
+    manager = request.app.state.agent_manager
+    try:
+        agent = await manager.get_agent(id, current_client.broker_type, creds, db)
+        connected = True
+    except BrokerError as exc:
+        connected = False
+        last_error = str(exc)
+        ready = False
+        return AgentReadinessOut(
+            client_id=id,
+            ready=ready,
+            connected=connected,
+            market_data_ok=market_data_ok,
+            mode=mode,
+            risk_blocked=risk_blocked,
+            last_error=last_error,
+            updated_at=datetime.now(timezone.utc),
+        )
+
+    try:
+        market = await agent.tools.get_market_data("ES")
+        underlying = float(market.get("underlying_price", 0.0))
+        bid = float(market.get("bid", 0.0))
+        ask = float(market.get("ask", 0.0))
+        market_data_ok = underlying > 0 or (bid > 0 and ask > 0)
+        if not market_data_ok and not last_error:
+            last_error = "Market data unavailable"
+    except BrokerError as exc:
+        market_data_ok = False
+        if not last_error:
+            last_error = str(exc)
+    except Exception as exc:  # noqa: BLE001
+        market_data_ok = False
+        if not last_error:
+            last_error = str(exc)
+
+    ready = connected and market_data_ok and not risk_blocked
+    return AgentReadinessOut(
+        client_id=id,
+        ready=ready,
+        connected=connected,
+        market_data_ok=market_data_ok,
+        mode=mode,
+        risk_blocked=risk_blocked,
+        last_error=last_error,
+        updated_at=datetime.now(timezone.utc),
+    )
 
 
 @router.get("/{id}/agent/proposals", response_model=list[ProposalOut])
