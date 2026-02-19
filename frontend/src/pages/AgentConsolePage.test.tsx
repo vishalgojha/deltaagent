@@ -135,8 +135,11 @@ describe("AgentConsolePage", () => {
     vi.mocked(endpoints.getProposals).mockResolvedValue([]);
     renderWithProviders(<AgentConsolePage clientId="client-1" token="token-1" />);
 
-    expect(await screen.findByText("Run: persisted run")).toBeInTheDocument();
-    expect(await screen.findByText("restored from storage")).toBeInTheDocument();
+    const runTitle = await screen.findByText("Run: persisted run");
+    expect(runTitle).toBeInTheDocument();
+    const runCard = runTitle.closest(".card");
+    expect(runCard).not.toBeNull();
+    expect(within(runCard!).getByText("restored from storage")).toBeInTheDocument();
   });
 
   it("toggles workflow step details and shows duration badge", async () => {
