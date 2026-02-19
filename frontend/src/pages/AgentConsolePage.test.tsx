@@ -289,6 +289,13 @@ describe("AgentConsolePage", () => {
 
     await user.click(approveButton);
     expect(vi.mocked(endpoints.approveProposal)).not.toHaveBeenCalled();
-    expect(await screen.findByText("Emergency halt enabled by admin")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Show Advanced" }));
+    expect(
+      await screen.findByText((text, node) => {
+        if (!node) return false;
+        return node.textContent?.includes("Emergency halt enabled by admin") ?? false;
+      })
+    ).toBeInTheDocument();
   });
 });
