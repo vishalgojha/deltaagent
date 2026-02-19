@@ -56,6 +56,7 @@ type PersistedTimelineState = {
   runs: TimelineRun[];
   resolvedProposals: Record<number, "approved" | "rejected">;
   proposalRunEntries: Array<[number, string]>;
+  auditEntries?: AuditEntry[];
 };
 
 type LiveAgentStatus = {
@@ -293,6 +294,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
 
   useEffect(() => {
     setRuns([]);
+    setAuditEntries([]);
     setResolvedProposals({});
     setLiveStatus(null);
     setLiveGreeks(null);
@@ -311,6 +313,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
       if (parsed.version !== TIMELINE_STORAGE_VERSION || !Array.isArray(parsed.runs)) return;
       const restoredRuns = parsed.runs.slice(0, 20);
       setRuns(restoredRuns);
+      setAuditEntries(Array.isArray(parsed.auditEntries) ? parsed.auditEntries.slice(0, 10) : []);
       setResolvedProposals(parsed.resolvedProposals ?? {});
       proposalRunMap.current = new Map(parsed.proposalRunEntries ?? []);
       for (const run of restoredRuns) {
@@ -332,14 +335,15 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
       version: TIMELINE_STORAGE_VERSION,
       runs: runs.slice(0, 20),
       resolvedProposals,
-      proposalRunEntries: Array.from(proposalRunMap.current.entries())
+      proposalRunEntries: Array.from(proposalRunMap.current.entries()),
+      auditEntries: auditEntries.slice(0, 10)
     };
     try {
       localStorage.setItem(storageKey(clientId), JSON.stringify(payload));
     } catch {
       // ignore storage write failures
     }
-  }, [clientId, runs, resolvedProposals]);
+  }, [clientId, runs, resolvedProposals, auditEntries]);
 
   useEffect(() => {
     if (statusQuery.data?.mode) {
