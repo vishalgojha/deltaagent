@@ -18,7 +18,8 @@ vi.mock("../api/endpoints", async () => {
     approveProposal: vi.fn(),
     rejectProposal: vi.fn(),
     setMode: vi.fn(),
-    getReadiness: vi.fn()
+    getReadiness: vi.fn(),
+    getTrades: vi.fn()
   };
 });
 
@@ -45,6 +46,7 @@ describe("AgentConsolePage", () => {
       updated_at: "2026-02-19T00:00:00Z"
     });
     vi.mocked(endpoints.setMode).mockResolvedValue({ ok: true });
+    vi.mocked(endpoints.getTrades).mockResolvedValue([]);
   });
 
   it("creates proposal from chat and approves it", async () => {
@@ -104,6 +106,50 @@ describe("AgentConsolePage", () => {
       expect(vi.mocked(endpoints.rejectProposal)).toHaveBeenCalledWith("client-1", 202);
     });
     expect(await screen.findByText("Rejected")).toBeInTheDocument();
+  });
+
+  it("executes selected proposal from simple flow and shows latest trade status", async () => {
+    const user = userEvent.setup();
+    vi.mocked(endpoints.getProposals)
+      .mockResolvedValueOnce([
+        {
+          id: 303,
+          timestamp: "2026-02-17T00:00:00Z",
+          trade_payload: { action: "SELL", symbol: "ES", qty: 1 },
+          agent_reasoning: "execute test",
+          status: "pending",
+          resolved_at: null
+        }
+      ])
+      .mockResolvedValue([]);
+    vi.mocked(endpoints.approveProposal).mockResolvedValue({ status: "approved" });
+    vi.mocked(endpoints.getTrades).mockResolvedValue([
+      {
+        id: 1,
+        timestamp: "2026-02-19T00:00:00Z",
+        action: "SELL",
+        symbol: "ES",
+        instrument: "FOP",
+        qty: 1,
+        fill_price: 21.5,
+        order_id: "OID-303",
+        agent_reasoning: "approved",
+        mode: "confirmation",
+        status: "filled",
+        pnl: 0
+      }
+    ]);
+
+    renderWithProviders(<AgentConsolePage clientId="client-1" token="token-1" />);
+    await screen.findByText("Execute Trade");
+
+    await user.click(screen.getByRole("button", { name: "Execute Trade" }));
+
+    await waitFor(() => {
+      expect(vi.mocked(endpoints.approveProposal)).toHaveBeenCalledWith("client-1", 303);
+    });
+    expect(await screen.findByText(/Order OID-303/)).toBeInTheDocument();
+    expect(await screen.findByText(/Status: filled/)).toBeInTheDocument();
   });
 
   it("restores persisted timeline runs on load", async () => {

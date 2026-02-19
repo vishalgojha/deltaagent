@@ -5,6 +5,7 @@ import {
   getHealth,
   getReadiness,
   getRiskParameters,
+  getTrades,
   getStatus,
   getProposals,
   rejectProposal,
@@ -13,7 +14,7 @@ import {
   updateAgentParameters
 } from "../api/endpoints";
 import { getApiBaseUrl } from "../api/client";
-import type { ChatResponse } from "../types";
+import type { ChatResponse, Trade } from "../types";
 import { useAgentStream } from "../hooks/useAgentStream";
 
 type Props = { clientId: string; token: string; isHalted?: boolean; haltReason?: string };
@@ -68,6 +69,8 @@ type LiveGreeks = {
   positions?: Array<Record<string, unknown>>;
   updated_at?: string;
 };
+
+type ExecutionPhase = "idle" | "preflight_blocked" | "ready" | "executing" | "executed" | "failed";
 
 const TIMELINE_STORAGE_VERSION = 1;
 
@@ -143,6 +146,10 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
   const [expandedWorkflowSteps, setExpandedWorkflowSteps] = useState<Record<string, boolean>>({});
   const [expandedTimelineItems, setExpandedTimelineItems] = useState<Record<string, boolean>>({});
   const [error, setError] = useState("");
+  const [selectedProposalId, setSelectedProposalId] = useState<number | null>(null);
+  const [executionPhase, setExecutionPhase] = useState<ExecutionPhase>("idle");
+  const [executionMessage, setExecutionMessage] = useState("");
+  const [lastExecutionTrade, setLastExecutionTrade] = useState<Trade | null>(null);
   const [showDebugStream, setShowDebugStream] = useState(false);
   const [activeTab, setActiveTab] = useState<"operate" | "timeline" | "debug">("operate");
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -505,6 +512,16 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
   }, [lastEvent, showDebugStream]);
 
   useEffect(() => {
+    if (pendingProposals.length === 0) {
+      setSelectedProposalId(null);
+      return;
+    }
+    if (!selectedProposalId || !pendingProposals.some((proposal) => proposal.id === selectedProposalId)) {
+      setSelectedProposalId(pendingProposals[0].id);
+    }
+  }, [pendingProposals, selectedProposalId]);
+
+  useEffect(() => {
     for (const proposal of proposalsQuery.data ?? []) {
       if (proposalIdsSeen.current.has(proposal.id)) continue;
       proposalIdsSeen.current.add(proposal.id);
@@ -604,6 +621,45 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
     };
     if (runId) appendToRun(runId, [item]);
     else appendSystemOutsideRun(item);
+  }
+
+  async function onExecuteSelectedProposal() {
+    if (!selectedProposalId) {
+      setExecutionPhase("idle");
+      setExecutionMessage("No pending proposal selected.");
+      return;
+    }
+
+    setExecutionPhase("idle");
+    setExecutionMessage("Running preflight checks...");
+    setLastExecutionTrade(null);
+
+    const readinessResult = await readinessQuery.refetch();
+    const readiness = readinessResult.data;
+    if (haltBlocked || !readiness?.ready) {
+      setExecutionPhase("preflight_blocked");
+      setExecutionMessage(haltReason || readiness?.last_error || "Execution blocked by readiness checks.");
+      return;
+    }
+
+    try {
+      setExecutionPhase("executing");
+      setExecutionMessage(`Sending Proposal #${selectedProposalId} to broker...`);
+      await onApprove(selectedProposalId);
+
+      const trades = await getTrades(clientId);
+      const latestTrade = trades[0] ?? null;
+      setLastExecutionTrade(latestTrade);
+      setExecutionPhase("executed");
+      setExecutionMessage(
+        latestTrade
+          ? `Order sent. Latest status: ${latestTrade.status}${latestTrade.order_id ? ` (Order ${latestTrade.order_id})` : ""}`
+          : "Order approval completed. Waiting for broker fill update."
+      );
+    } catch (err) {
+      setExecutionPhase("failed");
+      setExecutionMessage(err instanceof Error ? err.message : "Execution failed");
+    }
   }
 
   async function onReject(id: number) {
@@ -712,6 +768,75 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
 
         {pendingProposals.length > 0 && (
           <div className="grid" style={{ marginTop: 12 }}>
+            <div className="proposal-quick-card">
+              <p style={{ margin: 0, fontWeight: 700 }}>Execute Trade</p>
+              <p className="muted" style={{ marginTop: 6 }}>
+                Flow: Select proposal -> Preflight -> Execute -> Track broker status.
+              </p>
+              <div className="row" style={{ marginTop: 8 }}>
+                <label>
+                  Proposal
+                  <select
+                    style={{ marginLeft: 8 }}
+                    value={selectedProposalId ?? ""}
+                    onChange={(event) => setSelectedProposalId(Number(event.target.value))}
+                  >
+                    {pendingProposals.map((proposal) => (
+                      <option key={proposal.id} value={proposal.id}>
+                        #{proposal.id} {summarizeProposalPayload(proposal.trade_payload)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={haltBlocked}
+                  onClick={async () => {
+                    const readiness = await readinessQuery.refetch();
+                    if (!readiness.data?.ready || haltBlocked) {
+                      setExecutionPhase("preflight_blocked");
+                      setExecutionMessage(haltReason || readiness.data?.last_error || "Execution blocked by readiness checks.");
+                      return;
+                    }
+                    setExecutionPhase("ready");
+                    setExecutionMessage("Preflight passed. Ready to execute.");
+                  }}
+                >
+                  Run Preflight
+                </button>
+                <button
+                  type="button"
+                  disabled={
+                    haltBlocked ||
+                    !selectedProposalId ||
+                    approveMutation.isPending ||
+                    executionPhase === "executing" ||
+                    executionBlocked
+                  }
+                  onClick={onExecuteSelectedProposal}
+                >
+                  {executionPhase === "executing" ? "Executing..." : "Execute Trade"}
+                </button>
+              </div>
+              <div className="row" style={{ marginTop: 8 }}>
+                <span className="muted">Preflight: {executionBlocked ? "blocked" : "pass"}</span>
+                <span className="muted">Broker: {String(readinessQuery.data?.connected ?? "-")}</span>
+                <span className="muted">Market Data: {String(readinessQuery.data?.market_data_ok ?? "-")}</span>
+                <span className="muted">Risk: {readinessQuery.data?.risk_blocked ? "blocked" : "pass"}</span>
+              </div>
+              {executionMessage && <p className="muted" style={{ marginTop: 8 }}>{executionMessage}</p>}
+              <div className="row" style={{ marginTop: 4 }}>
+                <span className="muted">Lifecycle: Pending -> Sent to broker -> Fill status</span>
+                {lastExecutionTrade && (
+                  <span className="muted">
+                    Status: {lastExecutionTrade.status}
+                    {lastExecutionTrade.order_id ? ` | Order: ${lastExecutionTrade.order_id}` : ""}
+                    {lastExecutionTrade.fill_price !== null ? ` | Avg Fill: ${lastExecutionTrade.fill_price}` : ""}
+                  </span>
+                )}
+              </div>
+            </div>
             <p style={{ margin: 0, fontWeight: 700 }}>Pending Decisions</p>
             {pendingProposals.map((proposal) => (
               <div key={proposal.id} className="proposal-quick-card">
