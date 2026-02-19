@@ -50,13 +50,15 @@ test("login -> chat proposal -> approve/reject (real backend, mock broker)", asy
 
   await page.getByPlaceholder("Ask the agent...").fill("Rebalance now");
   await page.getByRole("button", { name: "Send" }).click();
-  await expect(page.getByText(/Proposal #\d+/).first()).toBeVisible();
-  await page.getByRole("button", { name: "Approve" }).first().click();
-  await expect(page.getByText(/Proposal #\d+ approved\./).first()).toBeVisible();
+  const firstQuickCard = page.locator(".proposal-quick-card").first();
+  await expect(firstQuickCard).toBeVisible();
+  await firstQuickCard.getByRole("button", { name: "Approve Proposal" }).click();
+  await expect(page.locator("p", { hasText: /Proposal #\d+ approved\./ }).first()).toBeVisible();
 
   await page.getByPlaceholder("Ask the agent...").fill("Rebalance now");
   await page.getByRole("button", { name: "Send" }).click();
-  await expect(page.getByText(/Proposal #\d+/).first()).toBeVisible();
-  await page.getByRole("button", { name: "Reject" }).first().click();
-  await expect(page.getByText(/Proposal #\d+ rejected\./).first()).toBeVisible();
+  const secondQuickCard = page.locator(".proposal-quick-card").first();
+  await expect(secondQuickCard).toBeVisible();
+  await secondQuickCard.getByRole("button", { name: "Reject Proposal" }).click();
+  await expect(page.locator("p", { hasText: /Proposal #\d+ rejected\./ }).first()).toBeVisible();
 });
