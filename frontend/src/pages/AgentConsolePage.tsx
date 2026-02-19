@@ -150,6 +150,8 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
   const [executionPhase, setExecutionPhase] = useState<ExecutionPhase>("idle");
   const [executionMessage, setExecutionMessage] = useState("");
   const [lastExecutionTrade, setLastExecutionTrade] = useState<Trade | null>(null);
+  const [executionSentAt, setExecutionSentAt] = useState<string | null>(null);
+  const [executionResolvedAt, setExecutionResolvedAt] = useState<string | null>(null);
   const [showDebugStream, setShowDebugStream] = useState(false);
   const [activeTab, setActiveTab] = useState<"operate" | "timeline" | "debug">("operate");
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -633,6 +635,8 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
     setExecutionPhase("idle");
     setExecutionMessage("Running preflight checks...");
     setLastExecutionTrade(null);
+    setExecutionSentAt(null);
+    setExecutionResolvedAt(null);
 
     const readinessResult = await readinessQuery.refetch();
     const readiness = readinessResult.data;
@@ -644,12 +648,14 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
 
     try {
       setExecutionPhase("executing");
+      setExecutionSentAt(nowIso());
       setExecutionMessage(`Sending Proposal #${selectedProposalId} to broker...`);
       await onApprove(selectedProposalId);
 
       const trades = await getTrades(clientId);
       const latestTrade = trades[0] ?? null;
       setLastExecutionTrade(latestTrade);
+      setExecutionResolvedAt(latestTrade?.timestamp ?? nowIso());
       setExecutionPhase("executed");
       setExecutionMessage(
         latestTrade
@@ -678,6 +684,21 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
 
   function injectPrompt(prompt: string) {
     setMessage(prompt);
+  }
+
+  function formatTs(ts?: string | null): string {
+    if (!ts) return "-";
+    const d = new Date(ts);
+    if (Number.isNaN(d.getTime())) return ts;
+    return d.toLocaleString();
+  }
+
+  function mapFillStatus(status?: string | null): "pending" | "partially_filled" | "filled" | "rejected" {
+    const raw = String(status ?? "").toLowerCase();
+    if (raw.includes("reject") || raw.includes("cancel")) return "rejected";
+    if (raw.includes("partial")) return "partially_filled";
+    if (raw.includes("fill")) return "filled";
+    return "pending";
   }
 
   function getStepDurationLabel(step: ToolStep): string | null {
@@ -827,14 +848,35 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
               </div>
               {executionMessage && <p className="muted" style={{ marginTop: 8 }}>{executionMessage}</p>}
               <div className="row" style={{ marginTop: 4 }}>
-                <span className="muted">Lifecycle: Pending -> Sent to broker -> Fill status</span>
-                {lastExecutionTrade && (
-                  <span className="muted">
-                    Status: {lastExecutionTrade.status}
-                    {lastExecutionTrade.order_id ? ` | Order: ${lastExecutionTrade.order_id}` : ""}
-                    {lastExecutionTrade.fill_price !== null ? ` | Avg Fill: ${lastExecutionTrade.fill_price}` : ""}
-                  </span>
-                )}
+                {(() => {
+                  const fillStatus = mapFillStatus(lastExecutionTrade?.status);
+                  const pendingActive = executionPhase === "idle" || executionPhase === "ready" || executionPhase === "preflight_blocked";
+                  const sentActive = executionPhase === "executing" || executionPhase === "executed";
+                  const partialActive = fillStatus === "partially_filled";
+                  const filledActive = fillStatus === "filled";
+                  const rejectedActive = executionPhase === "failed" || fillStatus === "rejected";
+                  return (
+                    <div className="grid" style={{ width: "100%" }}>
+                      <div className="row">
+                        <span className="muted">Lifecycle:</span>
+                        <span style={{ fontWeight: pendingActive ? 700 : 500 }}>Pending</span>
+                        <span style={{ fontWeight: sentActive ? 700 : 500 }}>Sent to broker</span>
+                        <span style={{ fontWeight: partialActive ? 700 : 500 }}>Partially filled</span>
+                        <span style={{ fontWeight: filledActive ? 700 : 500 }}>Filled</span>
+                        <span style={{ fontWeight: rejectedActive ? 700 : 500 }}>Rejected</span>
+                      </div>
+                      <div className="row">
+                        <span className="muted">Sent At: {formatTs(executionSentAt)}</span>
+                        <span className="muted">Resolved At: {formatTs(executionResolvedAt)}</span>
+                        <span className="muted">Status: {lastExecutionTrade?.status ?? "-"}</span>
+                        {lastExecutionTrade?.order_id && <span className="muted">Order: {lastExecutionTrade.order_id}</span>}
+                        {lastExecutionTrade?.fill_price !== null && lastExecutionTrade?.fill_price !== undefined && (
+                          <span className="muted">Avg Fill: {lastExecutionTrade.fill_price}</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
             <p style={{ margin: 0, fontWeight: 700 }}>Pending Decisions</p>
