@@ -19,6 +19,7 @@ frontend/.vite/
 frontend/test-results/
 frontend/playwright-report/
 frontend/.DS_Store
+frontend/*.tsbuildinfo
 
 # Logs and temp
 *.log
