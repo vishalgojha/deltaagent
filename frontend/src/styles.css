@@ -294,6 +294,47 @@ pre {
   box-shadow: var(--shadow);
 }
 
+.toast-stack {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: 70;
+  display: grid;
+  gap: 8px;
+  width: min(460px, calc(100vw - 28px));
+}
+
+.toast-item {
+  border: 1px solid var(--line-strong);
+  border-left-width: 4px;
+  border-radius: var(--radius-sm);
+  background: rgba(2, 6, 23, 0.88);
+  color: #e2e8f0;
+  padding: 10px 12px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.35;
+  box-shadow: var(--shadow);
+  letter-spacing: 0.01em;
+}
+
+.toast-prefix {
+  color: #cbd5e1;
+  font-weight: 700;
+}
+
+.toast-item.ok {
+  border-left-color: rgba(34, 197, 94, 0.9);
+}
+
+.toast-item.warn {
+  border-left-color: rgba(245, 158, 11, 0.9);
+}
+
+.toast-item.err {
+  border-left-color: rgba(239, 68, 68, 0.95);
+}
+
 .field-error {
   color: #fca5a5;
   font-size: 13px;

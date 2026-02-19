@@ -71,6 +71,13 @@ type LiveGreeks = {
 };
 
 type ExecutionPhase = "idle" | "preflight_blocked" | "ready" | "executing" | "executed" | "failed";
+type ToastTone = "ok" | "warn" | "err";
+
+type ToastItem = {
+  id: string;
+  tone: ToastTone;
+  text: string;
+};
 
 const TIMELINE_STORAGE_VERSION = 1;
 
@@ -154,6 +161,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
   const [executionResolvedAt, setExecutionResolvedAt] = useState<string | null>(null);
   const [executeConfirmed, setExecuteConfirmed] = useState(false);
   const [showExecuteModal, setShowExecuteModal] = useState(false);
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [showDebugStream, setShowDebugStream] = useState(false);
   const [activeTab, setActiveTab] = useState<"operate" | "timeline" | "debug">("operate");
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -642,9 +650,19 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
     }
   }
 
+  function pushToast(tone: ToastTone, text: string) {
+    const id = crypto.randomUUID();
+    setToasts((prev) => [{ id, tone, text }, ...prev].slice(0, 4));
+    window.setTimeout(() => {
+      setToasts((prev) => prev.filter((toast) => toast.id !== id));
+    }, 4500);
+  }
+
   async function onApprove(id: number) {
     if (effectiveBlocked) {
-      setError(haltReason || readinessQuery.data?.last_error || "Execution blocked: readiness checks are failing");
+      const blockReason = haltReason || readinessQuery.data?.last_error || "Execution blocked: readiness checks are failing";
+      setError(blockReason);
+      pushToast("warn", blockReason);
       return;
     }
     await approveMutation.mutateAsync(id);
@@ -658,6 +676,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
     };
     if (runId) appendToRun(runId, [item]);
     else appendSystemOutsideRun(item);
+    pushToast("ok", `Proposal #${id} approved`);
   }
 
   async function onExecuteSelectedProposal() {
@@ -683,7 +702,9 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
     const readiness = readinessResult.data;
     if (haltBlocked || !readiness?.ready) {
       setExecutionPhase("preflight_blocked");
-      setExecutionMessage(haltReason || readiness?.last_error || "Execution blocked by readiness checks.");
+      const blockReason = haltReason || readiness?.last_error || "Execution blocked by readiness checks.";
+      setExecutionMessage(blockReason);
+      pushToast("warn", blockReason);
       return;
     }
 
@@ -703,9 +724,17 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
           ? `Order sent. Latest status: ${latestTrade.status}${latestTrade.order_id ? ` (Order ${latestTrade.order_id})` : ""}`
           : "Order approval completed. Waiting for broker fill update."
       );
+      pushToast(
+        "ok",
+        latestTrade
+          ? `Order sent | status=${latestTrade.status}${latestTrade.order_id ? ` | id=${latestTrade.order_id}` : ""}`
+          : "Order approved | awaiting broker fill"
+      );
     } catch (err) {
       setExecutionPhase("failed");
-      setExecutionMessage(err instanceof Error ? err.message : "Execution failed");
+      const failMessage = err instanceof Error ? err.message : "Execution failed";
+      setExecutionMessage(failMessage);
+      pushToast("err", failMessage);
     }
   }
 
@@ -732,6 +761,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
     };
     if (runId) appendToRun(runId, [item]);
     else appendSystemOutsideRun(item);
+    pushToast("warn", `Proposal #${id} rejected`);
   }
 
   function injectPrompt(prompt: string) {
@@ -816,6 +846,18 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
 
   return (
     <div className="grid">
+      {toasts.length > 0 && (
+        <div className="toast-stack" aria-live="polite">
+          {toasts.map((toast) => (
+            <div key={toast.id} className={`toast-item ${toast.tone}`}>
+              <span className="toast-prefix">
+                {toast.tone === "ok" ? "[OK]" : toast.tone === "warn" ? "[WARN]" : "[ERR]"}
+              </span>{" "}
+              {toast.text}
+            </div>
+          ))}
+        </div>
+      )}
       <section className="card console-statebar">
         <div className="metric-grid">
           <article className="metric-card">
@@ -913,11 +955,14 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
                     const readiness = await readinessQuery.refetch();
                     if (!readiness.data?.ready || haltBlocked) {
                       setExecutionPhase("preflight_blocked");
-                      setExecutionMessage(haltReason || readiness.data?.last_error || "Execution blocked by readiness checks.");
+                      const blockReason = haltReason || readiness.data?.last_error || "Execution blocked by readiness checks.";
+                      setExecutionMessage(blockReason);
+                      pushToast("warn", blockReason);
                       return;
                     }
                     setExecutionPhase("ready");
                     setExecutionMessage("Preflight passed. Ready to execute.");
+                    pushToast("ok", "Preflight passed");
                   }}
                 >
                   Run Preflight
