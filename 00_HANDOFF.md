@@ -34,6 +34,15 @@ git push origin main
 Without this, GitHub/CI will not include the latest Agent Console changes.
 
 ## 4) How To Run (Newbie Friendly)
+### Easiest (no command memory)
+
+From repo root, double-click:
+
+- `start.bat` to start infra + backend + frontend
+- `stop.bat` to stop everything
+
+### Manual (if needed)
+
 Open 3 terminals in `C:\Users\Vishal Gopal Ojha\deltaagent`.
 
 Terminal A (infra):
