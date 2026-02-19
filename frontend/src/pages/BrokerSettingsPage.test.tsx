@@ -10,7 +10,8 @@ vi.mock("../api/endpoints", async () => {
   return {
     ...actual,
     getStatus: vi.fn(),
-    connectBroker: vi.fn()
+    connectBroker: vi.fn(),
+    brokerPreflight: vi.fn()
   };
 });
 
@@ -23,6 +24,15 @@ describe("BrokerSettingsPage", () => {
       healthy: true,
       last_action: null,
       net_greeks: { delta: 0, gamma: 0, theta: 0, vega: 0 }
+    });
+    vi.mocked(endpoints.brokerPreflight).mockResolvedValue({
+      ok: true,
+      broker: "ibkr",
+      checks: [{ key: "host", title: "IBKR host", status: "pass", detail: "Host=localhost" }],
+      blocking_issues: [],
+      warnings: [],
+      fix_hints: [],
+      checked_at: "2026-02-19T00:00:00Z"
     });
   });
 
@@ -81,5 +91,19 @@ describe("BrokerSettingsPage", () => {
 
     expect(await screen.findByText("IBKR port must be a valid number")).toBeInTheDocument();
     expect(vi.mocked(endpoints.connectBroker)).not.toHaveBeenCalled();
+  });
+
+  it("runs preflight and renders checklist result", async () => {
+    const user = userEvent.setup();
+
+    renderWithProviders(<BrokerSettingsPage clientId="client-1" />);
+    await screen.findByText("Broker Connection Health");
+
+    await user.click(screen.getByRole("button", { name: "Run Preflight" }));
+
+    await waitFor(() => expect(vi.mocked(endpoints.brokerPreflight)).toHaveBeenCalledWith("client-1", undefined));
+    expect(await screen.findByText("Overall:")).toBeInTheDocument();
+    expect(await screen.findByText("PASS")).toBeInTheDocument();
+    expect(await screen.findByText("IBKR host")).toBeInTheDocument();
   });
 });

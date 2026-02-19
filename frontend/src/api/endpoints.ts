@@ -1,6 +1,7 @@
 import { api } from "./client";
 import type {
   AgentStatus,
+  BrokerPreflight,
   AgentReadiness,
   ChatResponse,
   ClientOut,
@@ -42,6 +43,15 @@ export function onboardClient(payload: {
 
 export function connectBroker(clientId: string, brokerCredentials?: Record<string, unknown>) {
   return api<Record<string, unknown>>(`/clients/${clientId}/connect-broker`, {
+    method: "POST",
+    body: JSON.stringify({
+      broker_credentials: brokerCredentials ?? null
+    })
+  });
+}
+
+export function brokerPreflight(clientId: string, brokerCredentials?: Record<string, unknown>) {
+  return api<BrokerPreflight>(`/clients/${clientId}/broker/preflight`, {
     method: "POST",
     body: JSON.stringify({
       broker_credentials: brokerCredentials ?? null

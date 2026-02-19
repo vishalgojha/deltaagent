@@ -23,6 +23,23 @@ export type AgentReadiness = {
   updated_at: string;
 };
 
+export type BrokerPreflightCheck = {
+  key: string;
+  title: string;
+  status: "pass" | "warn" | "fail";
+  detail: string;
+};
+
+export type BrokerPreflight = {
+  ok: boolean;
+  broker: "ibkr" | "phillip";
+  checks: BrokerPreflightCheck[];
+  blocking_issues: string[];
+  warnings: string[];
+  fix_hints: string[];
+  checked_at: string;
+};
+
 export type EmergencyHaltStatus = {
   halted: boolean;
   reason: string;

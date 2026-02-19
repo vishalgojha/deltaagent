@@ -1,6 +1,7 @@
 import { FormEvent, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { connectBroker, getStatus } from "../api/endpoints";
+import { brokerPreflight, connectBroker, getStatus } from "../api/endpoints";
+import type { BrokerPreflight } from "../types";
 
 type Props = { clientId: string };
 
@@ -14,6 +15,8 @@ export function BrokerSettingsPage({ clientId }: Props) {
   const [delayedMarketData, setDelayedMarketData] = useState(true);
   const [connectError, setConnectError] = useState("");
   const [connectResult, setConnectResult] = useState("");
+  const [preflightError, setPreflightError] = useState("");
+  const [preflightResult, setPreflightResult] = useState<BrokerPreflight | null>(null);
 
   const healthQuery = useQuery({
     queryKey: ["agent-status", clientId],
@@ -27,41 +30,60 @@ export function BrokerSettingsPage({ clientId }: Props) {
     }
   });
 
-  async function onSubmit(event: FormEvent) {
-    event.preventDefault();
-    setConnectError("");
-    setConnectResult("");
+  const preflightMutation = useMutation({
+    mutationFn: (credentials?: Record<string, unknown>) => brokerPreflight(clientId, credentials)
+  });
 
-    let credentials: Record<string, unknown> | undefined;
-    if (!useSavedCredentials) {
-      const port = Number(ibkrPort);
-      const clientIdValue = Number(ibkrClientId);
-      if (!ibkrHost.trim()) {
-        setConnectError("IBKR host is required");
-        return;
-      }
-      if (!Number.isFinite(port)) {
-        setConnectError("IBKR port must be a valid number");
-        return;
-      }
-      if (!Number.isFinite(clientIdValue)) {
-        setConnectError("Client ID must be a valid number");
-        return;
-      }
-      credentials = {
+  function buildCredentials(): { credentials?: Record<string, unknown>; error?: string } {
+    if (useSavedCredentials) return { credentials: undefined };
+    const port = Number(ibkrPort);
+    const clientIdValue = Number(ibkrClientId);
+    if (!ibkrHost.trim()) return { error: "IBKR host is required" };
+    if (!Number.isFinite(port)) return { error: "IBKR port must be a valid number" };
+    if (!Number.isFinite(clientIdValue)) return { error: "Client ID must be a valid number" };
+    return {
+      credentials: {
         host: ibkrHost.trim(),
         port,
         client_id: clientIdValue,
         underlying_instrument: underlyingInstrument.trim() || "IND",
         delayed_market_data: delayedMarketData
-      };
+      }
+    };
+  }
+
+  async function onSubmit(event: FormEvent) {
+    event.preventDefault();
+    setConnectError("");
+    setConnectResult("");
+    setPreflightError("");
+
+    const built = buildCredentials();
+    if (built.error) {
+      setConnectError(built.error);
+      return;
     }
 
     try {
-      const result = await connectMutation.mutateAsync(credentials);
+      const result = await connectMutation.mutateAsync(built.credentials);
       setConnectResult(`Connection successful: connected=${String(result.connected)} broker=${String(result.broker)}`);
     } catch (err) {
       setConnectError(err instanceof Error ? err.message : "Broker connection failed");
+    }
+  }
+
+  async function onPreflight() {
+    setPreflightError("");
+    const built = buildCredentials();
+    if (built.error) {
+      setPreflightError(built.error);
+      return;
+    }
+    try {
+      const result = await preflightMutation.mutateAsync(built.credentials);
+      setPreflightResult(result);
+    } catch (err) {
+      setPreflightError(err instanceof Error ? err.message : "Preflight failed");
     }
   }
 
@@ -145,9 +167,68 @@ export function BrokerSettingsPage({ clientId }: Props) {
           <button type="submit" disabled={connectMutation.isPending}>
             {connectMutation.isPending ? "Connecting..." : "Reconnect Broker"}
           </button>
+          <button type="button" className="secondary" onClick={() => void onPreflight()} disabled={preflightMutation.isPending}>
+            {preflightMutation.isPending ? "Running Preflight..." : "Run Preflight"}
+          </button>
         </form>
         {connectResult && <p style={{ color: "#166534" }}>{connectResult}</p>}
         {connectError && <p style={{ color: "#991b1b" }}>{connectError}</p>}
+        {preflightError && <p style={{ color: "#991b1b" }}>{preflightError}</p>}
+      </section>
+
+      <section className="card">
+        <h3>Broker Preflight Checklist</h3>
+        {!preflightResult ? (
+          <p className="muted">Run preflight to validate credentials, socket reachability, and market data.</p>
+        ) : (
+          <div className="grid">
+            <p>
+              Overall:{" "}
+              <strong style={{ color: preflightResult.ok ? "#166534" : "#991b1b" }}>
+                {preflightResult.ok ? "PASS" : "FAIL"}
+              </strong>
+            </p>
+            {preflightResult.checks.map((check) => {
+              const color = check.status === "pass" ? "#166534" : check.status === "warn" ? "#92400e" : "#991b1b";
+              return (
+                <div key={check.key} className="preflight-check">
+                  <strong style={{ color }}>{check.title}</strong>
+                  <span className="muted">{check.detail}</span>
+                </div>
+              );
+            })}
+            {preflightResult.blocking_issues.length > 0 && (
+              <div>
+                <strong style={{ color: "#991b1b" }}>Blocking issues</strong>
+                {preflightResult.blocking_issues.map((item, idx) => (
+                  <p key={`${item}-${idx}`} className="muted">
+                    {item}
+                  </p>
+                ))}
+              </div>
+            )}
+            {preflightResult.warnings.length > 0 && (
+              <div>
+                <strong style={{ color: "#92400e" }}>Warnings</strong>
+                {preflightResult.warnings.map((item, idx) => (
+                  <p key={`${item}-${idx}`} className="muted">
+                    {item}
+                  </p>
+                ))}
+              </div>
+            )}
+            {preflightResult.fix_hints.length > 0 && (
+              <div>
+                <strong>Fix hints</strong>
+                {preflightResult.fix_hints.map((item, idx) => (
+                  <p key={`${item}-${idx}`} className="muted">
+                    {item}
+                  </p>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </section>
     </div>
   );

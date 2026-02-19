@@ -146,6 +146,23 @@ class BrokerConnectRequest(BaseModel):
     broker_credentials: dict | None = None
 
 
+class BrokerPreflightCheck(BaseModel):
+    key: str
+    title: str
+    status: Literal["pass", "warn", "fail"]
+    detail: str
+
+
+class BrokerPreflightResponse(BaseModel):
+    ok: bool
+    broker: Literal["ibkr", "phillip"]
+    checks: list[BrokerPreflightCheck]
+    blocking_issues: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    fix_hints: list[str] = Field(default_factory=list)
+    checked_at: datetime
+
+
 class EmergencyHaltRequest(BaseModel):
     halted: bool
     reason: str = ""
