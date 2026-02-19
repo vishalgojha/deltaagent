@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BrokerSettingsPage } from "./BrokerSettingsPage";
@@ -103,7 +103,8 @@ describe("BrokerSettingsPage", () => {
 
     await waitFor(() => expect(vi.mocked(endpoints.brokerPreflight)).toHaveBeenCalledWith("client-1", undefined));
     expect(await screen.findByText("Overall:")).toBeInTheDocument();
-    expect(await screen.findByText("PASS")).toBeInTheDocument();
+    const overallLabel = await screen.findByText("Overall:");
+    expect(within(overallLabel.parentElement!).getByText("PASS")).toBeInTheDocument();
     expect(await screen.findByText("IBKR host")).toBeInTheDocument();
   });
 });
