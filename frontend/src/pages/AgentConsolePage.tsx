@@ -211,6 +211,15 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
   const executionBlocked = !!readinessQuery.data && !readinessQuery.data.ready;
   const haltBlocked = isHalted;
   const effectiveBlocked = executionBlocked || haltBlocked;
+  const pendingProposals = proposalsQuery.data ?? [];
+  const assistantFeed = useMemo(() => {
+    const events = runs
+      .slice()
+      .reverse()
+      .flatMap((run) => run.items)
+      .filter((item) => item.kind === "user" || item.kind === "assistant" || item.kind === "proposal" || item.kind === "system");
+    return events.slice(-18);
+  }, [runs]);
   const filteredRuns = useMemo(() => {
     const query = timelineQuery.trim().toLowerCase();
     return runs.filter((run) => {
@@ -678,6 +687,42 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
       {activeTab === "operate" && (
         <div className="grid grid-2">
           <section className="card">
+        <h3>Trade Assistant</h3>
+        <p className="muted">Describe what you want. The system will analyze, propose, and execute only within your safety limits.</p>
+
+        <div className="assistant-chat" style={{ marginTop: 10 }}>
+          {assistantFeed.length === 0 && <p className="muted">No conversation yet. Start with a simple request like "Hedge delta to neutral".</p>}
+          {assistantFeed.map((item) => (
+            <div key={item.id} className={`assistant-bubble ${item.kind}`}>
+              <p className="assistant-role">
+                {item.kind === "user" ? "You" : item.kind === "assistant" ? "Agent" : item.kind === "proposal" ? "Proposal" : "System"}
+              </p>
+              <p>{item.kind === "proposal" && item.payload ? summarizeProposalPayload(item.payload) : item.text}</p>
+            </div>
+          ))}
+        </div>
+
+        {pendingProposals.length > 0 && (
+          <div className="grid" style={{ marginTop: 12 }}>
+            <p style={{ margin: 0, fontWeight: 700 }}>Pending Decisions</p>
+            {pendingProposals.map((proposal) => (
+              <div key={proposal.id} className="proposal-quick-card">
+                <p style={{ margin: 0, fontWeight: 700 }}>Proposal #{proposal.id}</p>
+                <p className="muted">{summarizeProposalPayload(proposal.trade_payload)}</p>
+                <div className="row">
+                  <button disabled={effectiveBlocked} onClick={() => onApprove(proposal.id)}>
+                    Approve Proposal
+                  </button>
+                  <button className="danger" onClick={() => onReject(proposal.id)}>
+                    Reject Proposal
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ marginTop: 14, borderTop: "1px solid rgba(148,163,184,0.25)", paddingTop: 12 }}>
         <h3>Agent Controls</h3>
         <div className="row">
           <button className="secondary" onClick={() => onModeChange("confirmation")}>
@@ -867,6 +912,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
           </div>
         </div>
         {error && <p style={{ color: "#991b1b" }}>{error}</p>}
+        </div>
       </section>
 
       <section className="card">
