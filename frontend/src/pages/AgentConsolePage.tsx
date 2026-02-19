@@ -712,6 +712,12 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
     setShowExecuteModal(true);
   }
 
+  async function confirmExecuteFromModal() {
+    if (executeBlockedByGuard || approveMutation.isPending || executionPhase === "executing") return;
+    setShowExecuteModal(false);
+    await onExecuteSelectedProposal();
+  }
+
   async function onReject(id: number) {
     await rejectMutation.mutateAsync(id);
     setResolvedProposals((prev) => ({ ...prev, [id]: "rejected" }));
@@ -761,6 +767,25 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
     const orderType = payload.order_type ? String(payload.order_type) : "-";
     return `${action} ${symbol} x${qty} (${instrument}, ${orderType})`;
   }
+
+  useEffect(() => {
+    if (!showExecuteModal) return;
+
+    function onModalKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setShowExecuteModal(false);
+        return;
+      }
+      if (event.key === "Enter") {
+        event.preventDefault();
+        void confirmExecuteFromModal();
+      }
+    }
+
+    window.addEventListener("keydown", onModalKeyDown);
+    return () => window.removeEventListener("keydown", onModalKeyDown);
+  }, [showExecuteModal, executeBlockedByGuard, approveMutation.isPending, executionPhase, selectedProposalId]);
 
   return (
     <div className="grid">
@@ -1381,10 +1406,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
               <button
                 type="button"
                 disabled={executeBlockedByGuard || approveMutation.isPending || executionPhase === "executing"}
-                onClick={async () => {
-                  setShowExecuteModal(false);
-                  await onExecuteSelectedProposal();
-                }}
+                onClick={confirmExecuteFromModal}
               >
                 Confirm Execute
               </button>

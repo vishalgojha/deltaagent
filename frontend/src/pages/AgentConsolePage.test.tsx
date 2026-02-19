@@ -179,6 +179,55 @@ describe("AgentConsolePage", () => {
     expect(screen.getByRole("button", { name: "Execute Trade" })).toBeEnabled();
   });
 
+  it("supports modal keyboard safety shortcuts", async () => {
+    const user = userEvent.setup();
+    vi.mocked(endpoints.getProposals).mockResolvedValueOnce([
+      {
+        id: 505,
+        timestamp: "2026-02-17T00:00:00Z",
+        trade_payload: { action: "SELL", symbol: "ES", qty: 1 },
+        agent_reasoning: "keyboard test",
+        status: "pending",
+        resolved_at: null
+      }
+    ]);
+    vi.mocked(endpoints.approveProposal).mockResolvedValue({ status: "approved" });
+    vi.mocked(endpoints.getTrades).mockResolvedValue([
+      {
+        id: 2,
+        timestamp: "2026-02-19T00:00:00Z",
+        action: "SELL",
+        symbol: "ES",
+        instrument: "FOP",
+        qty: 1,
+        fill_price: 19.25,
+        order_id: "OID-505",
+        agent_reasoning: "approved",
+        mode: "confirmation",
+        status: "filled",
+        pnl: 0
+      }
+    ]);
+
+    renderWithProviders(<AgentConsolePage clientId="client-1" token="token-1" />);
+    await user.click(screen.getByLabelText("I confirm this trade execution"));
+    await user.click(screen.getByRole("button", { name: "Execute Trade" }));
+    expect(await screen.findByRole("dialog", { name: "Trade Ticket Confirmation" })).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Trade Ticket Confirmation" })).not.toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Execute Trade" }));
+    expect(await screen.findByRole("dialog", { name: "Trade Ticket Confirmation" })).toBeInTheDocument();
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => {
+      expect(vi.mocked(endpoints.approveProposal)).toHaveBeenCalledWith("client-1", 505);
+    });
+  });
+
   it("restores persisted timeline runs on load", async () => {
     localStorage.setItem(
       "ta_agent_timeline_client-1",
