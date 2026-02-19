@@ -141,8 +141,12 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
   const [runs, setRuns] = useState<TimelineRun[]>([]);
   const [expandedToolItems, setExpandedToolItems] = useState<Record<string, boolean>>({});
   const [expandedWorkflowSteps, setExpandedWorkflowSteps] = useState<Record<string, boolean>>({});
+  const [expandedTimelineItems, setExpandedTimelineItems] = useState<Record<string, boolean>>({});
   const [error, setError] = useState("");
   const [showDebugStream, setShowDebugStream] = useState(false);
+  const [activeTab, setActiveTab] = useState<"operate" | "timeline" | "debug">("operate");
+  const [timelineQuery, setTimelineQuery] = useState("");
+  const [timelineStatusFilter, setTimelineStatusFilter] = useState<"all" | "running" | "completed">("all");
   const [liveStatus, setLiveStatus] = useState<LiveAgentStatus | null>(null);
   const [liveGreeks, setLiveGreeks] = useState<LiveGreeks | null>(null);
   const [debugEvents, setDebugEvents] = useState<Array<{ id: string; text: string; payload?: Record<string, unknown>; createdAt: string }>>(
@@ -207,6 +211,15 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
   const executionBlocked = !!readinessQuery.data && !readinessQuery.data.ready;
   const haltBlocked = isHalted;
   const effectiveBlocked = executionBlocked || haltBlocked;
+  const filteredRuns = useMemo(() => {
+    const query = timelineQuery.trim().toLowerCase();
+    return runs.filter((run) => {
+      if (timelineStatusFilter !== "all" && run.status !== timelineStatusFilter) return false;
+      if (!query) return true;
+      if (run.title.toLowerCase().includes(query)) return true;
+      return run.items.some((item) => item.text.toLowerCase().includes(query) || String(item.proposalId ?? "").includes(query));
+    });
+  }, [runs, timelineQuery, timelineStatusFilter]);
 
   useEffect(() => {
     setRuns([]);
@@ -216,6 +229,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
     setDebugEvents([]);
     setExpandedToolItems({});
     setExpandedWorkflowSteps({});
+    setExpandedTimelineItems({});
     proposalIdsSeen.current = new Set();
     proposalRunMap.current = new Map();
     activeRunIdRef.current = null;
@@ -607,9 +621,63 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
     return null;
   }
 
+  function summarizeProposalPayload(payload?: Record<string, unknown>): string {
+    if (!payload) return "No trade payload";
+    const action = payload.action ? String(payload.action) : "-";
+    const symbol = payload.symbol ? String(payload.symbol) : "-";
+    const qty = payload.qty ?? "-";
+    const instrument = payload.instrument ? String(payload.instrument) : "-";
+    const orderType = payload.order_type ? String(payload.order_type) : "-";
+    return `${action} ${symbol} x${qty} (${instrument}, ${orderType})`;
+  }
+
   return (
-    <div className="grid grid-2">
+    <div className="grid">
+      <section className="card console-statebar">
+        <div className="metric-grid">
+          <article className="metric-card">
+            <p className="metric-label">Execution</p>
+            <p className="metric-value">{effectiveBlocked ? "blocked" : "ready"}</p>
+          </article>
+          <article className="metric-card">
+            <p className="metric-label">Mode</p>
+            <p className="metric-value">{liveStatus?.mode ?? statusQuery.data?.mode ?? mode}</p>
+          </article>
+          <article className="metric-card">
+            <p className="metric-label">Engine</p>
+            <p className="metric-value">{decisionBackend}</p>
+          </article>
+          <article className="metric-card">
+            <p className="metric-label">WebSocket</p>
+            <p className="metric-value">{connected ? "connected" : "disconnected"}</p>
+          </article>
+        </div>
+      </section>
+
       <section className="card">
+        <div className="row">
+          <button type="button" className={activeTab === "operate" ? "" : "secondary"} onClick={() => setActiveTab("operate")}>
+            Operate
+          </button>
+          <button type="button" className={activeTab === "timeline" ? "" : "secondary"} onClick={() => setActiveTab("timeline")}>
+            Timeline
+          </button>
+          <button
+            type="button"
+            className={activeTab === "debug" ? "" : "secondary"}
+            onClick={() => {
+              setShowDebugStream(true);
+              setActiveTab("debug");
+            }}
+          >
+            Debug
+          </button>
+        </div>
+      </section>
+
+      {activeTab === "operate" && (
+        <div className="grid grid-2">
+          <section className="card">
         <h3>Agent Controls</h3>
         <div className="row">
           <button className="secondary" onClick={() => onModeChange("confirmation")}>
@@ -802,16 +870,17 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
       </section>
 
       <section className="card">
-        <h3>Agent Timeline</h3>
+        <h3>Recent Timeline</h3>
+        <p className="muted">Most recent runs. Open Timeline tab for full history and filters.</p>
         {proposalsQuery.isLoading && <p className="muted">Loading proposals...</p>}
         {proposalsQuery.error && (
           <p style={{ color: "#991b1b" }}>
             {proposalsQuery.error instanceof Error ? proposalsQuery.error.message : "Failed to load proposals"}
           </p>
         )}
-        <div className="grid" style={{ maxHeight: 560, overflow: "auto" }}>
+        <div className="grid" style={{ maxHeight: 560, overflow: "auto", marginTop: 8 }}>
           {runs.length === 0 && <p className="muted">No timeline entries yet.</p>}
-          {runs.map((run) => (
+          {runs.slice(0, 5).map((run) => (
             <div key={run.id} className="card" style={{ marginBottom: 4 }}>
               <div className="row" style={{ justifyContent: "space-between" }}>
                 <p style={{ margin: 0, fontWeight: 700 }}>Run: {run.title}</p>
@@ -837,7 +906,28 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
                         {item.kind === "system" && "System"}
                       </p>
                       <p style={{ margin: "0 0 6px 0" }}>{item.text}</p>
-                      {item.payload && <pre>{JSON.stringify(item.payload, null, 2)}</pre>}
+                      {item.kind === "proposal" && item.payload && (
+                        <p className="muted" style={{ marginBottom: 6 }}>
+                          {summarizeProposalPayload(item.payload)}
+                        </p>
+                      )}
+                      {item.payload && (
+                        <>
+                          <button
+                            type="button"
+                            className="secondary"
+                            onClick={() =>
+                              setExpandedTimelineItems((prev) => ({
+                                ...prev,
+                                [item.id]: !prev[item.id]
+                              }))
+                            }
+                          >
+                            {expandedTimelineItems[item.id] ? "Hide payload" : "Show payload"}
+                          </button>
+                          {expandedTimelineItems[item.id] && <pre style={{ marginTop: 8 }}>{JSON.stringify(item.payload, null, 2)}</pre>}
+                        </>
+                      )}
                       {isProposalPending && item.proposalId !== undefined && (
                         <div className="row">
                           <button disabled={effectiveBlocked} onClick={() => onApprove(item.proposalId!)}>
@@ -860,21 +950,122 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
             </div>
           ))}
         </div>
-        {showDebugStream && (
+      </section>
+        </div>
+      )}
+
+      {activeTab === "timeline" && (
+        <section className="card">
+          <h3>Agent Timeline</h3>
+          <div className="row" style={{ marginBottom: 8 }}>
+            <input
+              placeholder="Search run/proposal text"
+              value={timelineQuery}
+              onChange={(e) => setTimelineQuery(e.target.value)}
+              style={{ maxWidth: 280 }}
+            />
+            <select
+              value={timelineStatusFilter}
+              onChange={(e) => setTimelineStatusFilter(e.target.value as "all" | "running" | "completed")}
+              style={{ maxWidth: 160 }}
+            >
+              <option value="all">All statuses</option>
+              <option value="running">Running</option>
+              <option value="completed">Completed</option>
+            </select>
+          </div>
+          <div className="grid" style={{ maxHeight: 700, overflow: "auto" }}>
+            {filteredRuns.length === 0 && <p className="muted">No timeline entries yet.</p>}
+            {filteredRuns.map((run) => (
+              <div key={run.id} className="card" style={{ marginBottom: 4 }}>
+                <div className="row" style={{ justifyContent: "space-between" }}>
+                  <p style={{ margin: 0, fontWeight: 700 }}>Run: {run.title}</p>
+                  <p className="muted" style={{ margin: 0 }}>{run.status}</p>
+                </div>
+                <div className="grid" style={{ marginTop: 8 }}>
+                  {run.items.map((item) => (
+                    <div key={item.id} className="card" style={{ marginBottom: 2 }}>
+                      <p style={{ margin: "0 0 6px 0", fontWeight: 700 }}>
+                        {item.kind === "user" && "You"}
+                        {item.kind === "assistant" && "Agent"}
+                        {item.kind === "tool_call" && "Tool Call"}
+                        {item.kind === "tool_result" && "Tool Result"}
+                        {item.kind === "proposal" && `Proposal #${item.proposalId ?? "-"}`}
+                        {item.kind === "status" && "Status"}
+                        {item.kind === "system" && "System"}
+                      </p>
+                      <p style={{ margin: "0 0 6px 0" }}>{item.text}</p>
+                      {item.kind === "proposal" && item.payload && (
+                        <p className="muted" style={{ marginBottom: 6 }}>
+                          {summarizeProposalPayload(item.payload)}
+                        </p>
+                      )}
+                      {item.payload && (
+                        <>
+                          <button
+                            type="button"
+                            className="secondary"
+                            onClick={() =>
+                              setExpandedTimelineItems((prev) => ({
+                                ...prev,
+                                [item.id]: !prev[item.id]
+                              }))
+                            }
+                          >
+                            {expandedTimelineItems[item.id] ? "Hide payload" : "Show payload"}
+                          </button>
+                          {expandedTimelineItems[item.id] && <pre style={{ marginTop: 8 }}>{JSON.stringify(item.payload, null, 2)}</pre>}
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {activeTab === "debug" && (
+        <section className="card">
+          <h3>Debug Stream Events</h3>
+          <p className="muted">Tool traces and websocket payloads for diagnostics.</p>
           <div style={{ marginTop: 12 }}>
-            <p style={{ margin: "0 0 6px 0", fontWeight: 700 }}>Debug Stream Events</p>
-            <div className="grid" style={{ maxHeight: 220, overflow: "auto" }}>
-              {debugEvents.length === 0 && <p className="muted">No stream events captured yet.</p>}
-              {debugEvents.map((event) => (
-                <div key={event.id} className="card" style={{ marginBottom: 2 }}>
-                  <p style={{ margin: "0 0 6px 0", fontWeight: 700 }}>{event.text}</p>
-                  {event.payload && <pre>{JSON.stringify(event.payload, null, 2)}</pre>}
+            <p style={{ margin: "0 0 6px 0", fontWeight: 700 }}>Tool Execution</p>
+            {toolStripItems.length === 0 && <p className="muted" style={{ margin: 0 }}>No tool calls in current run.</p>}
+            <div className="row" style={{ alignItems: "flex-start" }}>
+              {toolStripItems.map((item) => (
+                <div key={item.id} className="card" style={{ minWidth: 0, flex: "1 1 220px", margin: 0 }}>
+                  <button
+                    className="secondary"
+                    type="button"
+                    onClick={() =>
+                      setExpandedToolItems((prev) => ({
+                        ...prev,
+                        [item.id]: !prev[item.id]
+                      }))
+                    }
+                  >
+                    {item.kind === "tool_call" ? "Call" : "Result"}: {item.text}
+                  </button>
+                  {expandedToolItems[item.id] && item.payload && (
+                    <pre style={{ marginTop: 8 }}>{JSON.stringify(item.payload, null, 2)}</pre>
+                  )}
                 </div>
               ))}
             </div>
           </div>
-        )}
-      </section>
+          <div className="grid" style={{ maxHeight: 420, overflow: "auto", marginTop: 10 }}>
+            {debugEvents.length === 0 && <p className="muted">No stream events captured yet.</p>}
+            {debugEvents.map((event) => (
+              <div key={event.id} className="card" style={{ marginBottom: 2 }}>
+                <p style={{ margin: "0 0 6px 0", fontWeight: 700 }}>{event.text}</p>
+                {event.payload && <pre>{JSON.stringify(event.payload, null, 2)}</pre>}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }
