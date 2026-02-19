@@ -400,6 +400,19 @@ pre {
   border-color: rgba(239, 68, 68, 0.7);
 }
 
+.policy-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.policy-chip {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  background: rgba(2, 6, 23, 0.45);
+}
+
 .field-error {
   color: #fca5a5;
   font-size: 13px;

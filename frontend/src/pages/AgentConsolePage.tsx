@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   approveProposal,
   connectBroker,
+  getAdminEmergencyHalt,
   getHealth,
   getReadiness,
   getRiskParameters,
@@ -11,6 +12,7 @@ import {
   getProposals,
   rejectProposal,
   sendChat,
+  setAdminEmergencyHalt,
   setMode,
   updateAgentParameters
 } from "../api/endpoints";
@@ -180,6 +182,9 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
   const [reconnectNextRetryIn, setReconnectNextRetryIn] = useState<number | null>(null);
   const [reconnectStatusText, setReconnectStatusText] = useState("");
+  const [adminKey, setAdminKey] = useState("");
+  const [killSwitchReason, setKillSwitchReason] = useState("");
+  const [killSwitchConfirm, setKillSwitchConfirm] = useState("");
   const [showDebugStream, setShowDebugStream] = useState(false);
   const [activeTab, setActiveTab] = useState<"operate" | "timeline" | "debug">("operate");
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -235,6 +240,13 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
     queryFn: () => getRiskParameters(clientId)
   });
 
+  const adminHaltQuery = useQuery({
+    queryKey: ["admin-emergency-halt-inline", adminKey],
+    queryFn: () => getAdminEmergencyHalt(adminKey),
+    enabled: adminKey.trim().length > 0,
+    refetchInterval: 15000
+  });
+
   const pendingProposalIds = useMemo(
     () => new Set((proposalsQuery.data ?? []).map((proposal) => proposal.id)),
     [proposalsQuery.data]
@@ -269,6 +281,11 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
     haltBlocked ||
     executionBlocked ||
     (mode === "confirmation" && !executeConfirmed);
+  const riskParams = (parametersQuery.data?.risk_parameters ?? {}) as Record<string, unknown>;
+  const policyDeltaThreshold = riskParams.delta_threshold ?? 0.2;
+  const policyMaxSize = riskParams.max_size ?? 10;
+  const policyMaxLoss = riskParams.max_loss ?? 5000;
+  const policyMaxOpenPositions = riskParams.max_open_positions ?? 20;
   const pendingProposals = proposalsQuery.data ?? [];
   const selectedProposal = useMemo(
     () => pendingProposals.find((proposal) => proposal.id === selectedProposalId) ?? null,
@@ -396,6 +413,15 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
   const reconnectBrokerMutation = useMutation({
     mutationFn: () => connectBroker(clientId),
     onSuccess: async () => {
+      await readinessQuery.refetch();
+    }
+  });
+
+  const setGlobalHaltMutation = useMutation({
+    mutationFn: (payload: { halted: boolean; reason: string }) =>
+      setAdminEmergencyHalt(adminKey, payload.halted, payload.reason),
+    onSuccess: async () => {
+      await adminHaltQuery.refetch();
       await readinessQuery.refetch();
     }
   });
@@ -767,6 +793,35 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
     }
   }
 
+  async function onToggleGlobalHalt(halted: boolean) {
+    if (!adminKey.trim()) {
+      pushToast("err", "Admin key required");
+      addAuditEntry("user", "global_halt_blocked", "err", "Missing admin key");
+      return;
+    }
+    if (!killSwitchReason.trim()) {
+      pushToast("err", "Reason required");
+      addAuditEntry("user", "global_halt_blocked", "err", "Missing reason");
+      return;
+    }
+    if (halted && killSwitchConfirm.trim().toUpperCase() !== "HALT") {
+      pushToast("warn", 'Type HALT in confirmation box');
+      addAuditEntry("user", "global_halt_blocked", "warn", "Confirmation text mismatch");
+      return;
+    }
+
+    try {
+      await setGlobalHaltMutation.mutateAsync({ halted, reason: killSwitchReason.trim() });
+      pushToast("ok", halted ? "Global halt enabled" : "Global halt resumed");
+      addAuditEntry("user", halted ? "global_halt_enabled" : "global_halt_resumed", "ok", killSwitchReason.trim());
+      setKillSwitchConfirm("");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Global halt update failed";
+      pushToast("err", message);
+      addAuditEntry("user", "global_halt_failed", "err", message);
+    }
+  }
+
   async function copyToastLine(toast: ToastItem) {
     const prefix = toast.tone === "ok" ? "[OK]" : toast.tone === "warn" ? "[WARN]" : "[ERR]";
     const line = `${prefix} ${toast.text}`;
@@ -1027,6 +1082,107 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
               Last check: {formatTs(readinessQuery.data?.updated_at ?? null)}
             </p>
           </article>
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="section-head">
+          <div>
+            <h3>Safety Policy</h3>
+            <p className="muted">Live guardrails and global kill switch controls.</p>
+          </div>
+        </div>
+        <div className="policy-grid" style={{ marginTop: 10 }}>
+          <div className="policy-chip">
+            <p className="metric-label">Mode</p>
+            <p className="metric-value">{mode}</p>
+          </div>
+          <div className="policy-chip">
+            <p className="metric-label">Delta Threshold</p>
+            <p className="metric-value">{String(policyDeltaThreshold)}</p>
+          </div>
+          <div className="policy-chip">
+            <p className="metric-label">Max Size</p>
+            <p className="metric-value">{String(policyMaxSize)}</p>
+          </div>
+          <div className="policy-chip">
+            <p className="metric-label">Max Loss</p>
+            <p className="metric-value">${String(policyMaxLoss)}</p>
+          </div>
+          <div className="policy-chip">
+            <p className="metric-label">Max Open Positions</p>
+            <p className="metric-value">{String(policyMaxOpenPositions)}</p>
+          </div>
+          <div className="policy-chip">
+            <p className="metric-label">Global Halt</p>
+            <p className="metric-value">{isHalted ? "ON" : "OFF"}</p>
+            {isHalted && <p style={{ marginTop: 4, color: "#fca5a5" }}>{haltReason || "Global halt active"}</p>}
+          </div>
+        </div>
+        <div className="grid" style={{ marginTop: 10 }}>
+          <div className="row">
+            <label>
+              Admin Key
+              <input
+                data-testid="kill-switch-admin-key"
+                style={{ marginLeft: 8, minWidth: 220 }}
+                type="password"
+                value={adminKey}
+                onChange={(event) => setAdminKey(event.target.value)}
+                placeholder="X-Admin-Key"
+              />
+            </label>
+            <label>
+              Reason
+              <input
+                data-testid="kill-switch-reason"
+                style={{ marginLeft: 8, minWidth: 280 }}
+                value={killSwitchReason}
+                onChange={(event) => setKillSwitchReason(event.target.value)}
+                placeholder="Why enable/disable global halt?"
+              />
+            </label>
+            <label>
+              Confirm
+              <input
+                data-testid="kill-switch-confirm"
+                style={{ marginLeft: 8, minWidth: 120 }}
+                value={killSwitchConfirm}
+                onChange={(event) => setKillSwitchConfirm(event.target.value)}
+                placeholder="Type HALT"
+              />
+            </label>
+          </div>
+          <div className="row">
+            <button
+              type="button"
+              className="danger"
+              data-testid="kill-switch-enable"
+              disabled={setGlobalHaltMutation.isPending}
+              onClick={() => void onToggleGlobalHalt(true)}
+            >
+              {setGlobalHaltMutation.isPending ? "Applying..." : "Enable Global Halt"}
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              data-testid="kill-switch-disable"
+              disabled={setGlobalHaltMutation.isPending}
+              onClick={() => void onToggleGlobalHalt(false)}
+            >
+              {setGlobalHaltMutation.isPending ? "Applying..." : "Resume Trading"}
+            </button>
+            {adminKey.trim() && (
+              <span className="muted" style={{ fontFamily: "var(--font-mono)" }}>
+                admin halt:{" "}
+                {adminHaltQuery.isLoading
+                  ? "checking..."
+                  : adminHaltQuery.data
+                  ? `${adminHaltQuery.data.halted ? "ON" : "OFF"} @ ${formatTs(adminHaltQuery.data.updated_at)}`
+                  : "unavailable"}
+              </span>
+            )}
+          </div>
         </div>
       </section>
 
