@@ -3,6 +3,7 @@
 ## Start Here
 
 Read `00_HANDOFF.md` first for current status, exact run steps, and next action.
+For AI collaboration protocol, read `WHATTODO.md` (or `WHATTODO_FAST.md` for low-risk small fixes).
 
 Production-oriented async backend for multi-tenant delta-neutral futures options agent trading.
 
