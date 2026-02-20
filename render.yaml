@@ -1,0 +1,42 @@
+services:
+  - type: web
+    name: deltaagent-api
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: ADMIN_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: USE_MOCK_BROKER
+        value: "true"
+      - key: AUTONOMOUS_ENABLED
+        value: "false"
+      - key: AUTO_CREATE_TABLES
+        value: "false"
+      - key: CORS_ORIGINS
+        sync: false
+
+  - type: web
+    name: deltaagent-frontend
+    env: node
+    plan: free
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    startCommand: npm run preview -- --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: VITE_API_BASE_URL
+        sync: false
+      - key: VITE_WS_BASE_URL
+        sync: false

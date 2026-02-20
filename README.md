@@ -125,6 +125,34 @@ Broker-related API failures now return structured `detail` payloads for telemetr
 - Broker reconnect/failure triage: `docs/runbooks/broker-failure-triage.md`
 - Postgres RLS tenant debugging: `docs/runbooks/rls-tenant-debugging.md`
 
+## Deployment Hardening
+
+### Files added
+- `railway.json` for Railway backend deploy profile
+- `render.yaml` for Render blueprint (backend + frontend)
+- `scripts/validate_env.py` for env safety checks
+- `scripts/post_deploy_smoke.py` for post-deploy API smoke tests
+
+### Validate environment before deploy
+```bash
+python scripts/validate_env.py --target production --env-file .env
+```
+
+Strict mode (warnings fail):
+```bash
+python scripts/validate_env.py --target production --env-file .env --strict-warnings
+```
+
+### Post-deploy smoke checks
+```bash
+python scripts/post_deploy_smoke.py --base-url https://YOUR_BACKEND_URL --require-ready
+```
+
+Smoke checks verify:
+- `/health`
+- `/openapi.json` strategy-template endpoints
+- `/health/ready`
+
 ## Migrations (Alembic)
 
 Config: `backend/db/alembic.ini`

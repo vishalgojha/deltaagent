@@ -9,6 +9,13 @@ Last updated: 2026-02-20
 - CI baseline: use latest commit below and verify checks on GitHub Actions
 
 ## 2) What Was Just Completed
+### Deployment hardening
+- Added Railway deploy profile: `railway.json`
+- Added Render blueprint: `render.yaml`
+- Added pre-deploy env validator: `scripts/validate_env.py`
+- Added post-deploy smoke check runner: `scripts/post_deploy_smoke.py`
+- Updated `README.md` with deployment validation/smoke commands
+
 ### Agent Console: execution-safe product flow
 - Simple execute flow: select proposal -> preflight -> execute -> status/fill tracking
 - Lifecycle states: `Pending`, `Sent to broker`, `Partially filled`, `Filled`, `Rejected`
@@ -115,27 +122,28 @@ npx tsc -b
 ```
 
 ## 7) Pending (Product)
-1. Deployment hardening
-- Railway/Render deploy profile, env validator, post-deploy smoke checks.
-
-2. Broker-native lifecycle depth
+1. Broker-native lifecycle depth
 - Add partial-fill/cancel/update transitions from broker adapters (beyond latest-trade row updates).
 
-3. Admin auth hardening
+2. Admin auth hardening
 - Replace raw admin-key entry in UI with secure admin session flow.
 
-4. Websocket test depth
+3. Websocket test depth
 - Add multi-transition websocket integration tests over time.
 
-5. E2E refresh
+4. E2E refresh
 - Update Playwright smoke to assert safety policy, modal confirm, and lifecycle source.
 
-6. Docs sync
+5. Docs sync
 - README + screenshots + operator runbook updates for current UX.
 
 ## 8) Important Files
 - Primary handoff: `00_HANDOFF.md`
 - Previous handoff archive: `HANDOFF.md`
+- Deployment env validator: `scripts/validate_env.py`
+- Post-deploy smoke checks: `scripts/post_deploy_smoke.py`
+- Railway profile: `railway.json`
+- Render profile: `render.yaml`
 - Agent Console: `frontend/src/pages/AgentConsolePage.tsx`
 - Agent Console tests: `frontend/src/pages/AgentConsolePage.test.tsx`
 - Websocket stream API: `backend/api/websocket.py`
