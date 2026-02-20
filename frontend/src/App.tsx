@@ -9,6 +9,7 @@ import { OnboardingPage } from "./pages/OnboardingPage";
 import { BrokerSettingsPage } from "./pages/BrokerSettingsPage";
 import { StrategyTemplatesPage } from "./pages/StrategyTemplatesPage";
 import { AdminSafetyPage } from "./pages/AdminSafetyPage";
+import { LandingPage } from "./pages/LandingPage";
 import { clearSession, getSession } from "./store/session";
 
 class RouteErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
@@ -135,6 +136,7 @@ export function App() {
   return (
     <RouteErrorBoundary>
       <Routes>
+        <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/onboard" element={<OnboardingPage />} />
         <Route element={<RequireSession />}>
