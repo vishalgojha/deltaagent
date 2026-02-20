@@ -9,6 +9,13 @@ Last updated: 2026-02-20
 - CI baseline: use latest commit below and verify checks on GitHub Actions
 
 ## 2) What Was Just Completed
+### Operator docs sync
+- Updated emergency halt runbook for admin bearer session flow
+- Added admin session operations runbook:
+  - `docs/runbooks/admin-session-operations.md`
+- Added screenshot shotlist template:
+  - `docs/screenshots/SHOTLIST.md`
+
 ### Admin auth hardening
 - Added admin session endpoint: `POST /admin/session/login`
 - Admin controls now use bearer token session flow (`Unlock Admin` / `Lock Admin`)
@@ -83,6 +90,7 @@ Last updated: 2026-02-20
 - Copy action for each onboarding fix hint
 
 ## 3) Most Recent Commits (Newest First)
+- `7b19661` Sync docs with admin session, websocket, and e2e updates
 - `4914222` Refresh smoke e2e for safety policy and modal execution
 - `e69a9ea` Expand websocket integration coverage for multi-step fills
 - `ce1009a` Harden admin controls with session token flow
@@ -142,9 +150,8 @@ npx tsc -b
 ```
 
 ## 7) Pending (Product)
-1. Screenshots and operator docs
-- Add up-to-date screenshots/GIFs for Agent Console execute modal, Safety Policy, and lifecycle source.
-- Extend runbooks with admin session unlock/lock workflow and troubleshooting.
+1. Capture and publish screenshots/GIF
+- Follow `docs/screenshots/SHOTLIST.md` and add final visual assets to repo docs.
 
 ## 8) Important Files
 - Primary handoff: `00_HANDOFF.md`
@@ -158,6 +165,8 @@ npx tsc -b
 - Websocket stream API: `backend/api/websocket.py`
 - Websocket test: `backend/tests/test_websocket_order_status.py`
 - Playwright smoke: `frontend/e2e/smoke.spec.ts`
+- Admin session runbook: `docs/runbooks/admin-session-operations.md`
+- Screenshot checklist: `docs/screenshots/SHOTLIST.md`
 - Onboarding: `frontend/src/pages/OnboardingPage.tsx`
 - Onboarding tests: `frontend/src/pages/OnboardingPage.test.tsx`
 - Frontend styles: `frontend/src/styles.css`

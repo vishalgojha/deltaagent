@@ -123,8 +123,10 @@ Broker-related API failures now return structured `detail` payloads for telemetr
 ## Runbooks
 
 - Emergency halt operations: `docs/runbooks/emergency-halt.md`
+- Admin session operations: `docs/runbooks/admin-session-operations.md`
 - Broker reconnect/failure triage: `docs/runbooks/broker-failure-triage.md`
 - Postgres RLS tenant debugging: `docs/runbooks/rls-tenant-debugging.md`
+- Screenshot shotlist: `docs/screenshots/SHOTLIST.md`
 
 ## Deployment Hardening
 
