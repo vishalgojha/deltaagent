@@ -4,128 +4,60 @@ Last updated: 2026-02-20
 
 ## 1) Current State (Fast)
 - Branch: `main`
-- Local status: clean working tree
-- Sync status: `main...origin/main` (fully pushed)
-- CI baseline: use latest commit below and verify checks on GitHub Actions
+- Sync status: `main...origin/main` (fully pushed through `817e2aa`)
+- Local status: **not clean**
+  - `M frontend/src/pages/AgentConsolePage.test.tsx` (pre-existing local edit, intentionally not committed by agent)
 
 ## 2) What Was Just Completed
-### Frontend visual + UX polish pass
-- Scoped visual reskin applied across:
-  - `DashboardPage`
-  - `BrokerSettingsPage`
-  - `StrategyTemplatesPage`
-  - `AdminSafetyPage`
-  - `OnboardingPage`
-  - `LoginPage`
-- Added accessibility and UX hardening:
-  - visible keyboard focus rings (`:focus-visible`)
-  - reduced-motion safety (`prefers-reduced-motion`)
-  - better mobile topbar wrapping/readability
-- TypeScript compile check passed:
-  - `cd frontend && npx tsc -b`
+### IBKR reconnect reliability (no manual client-id rotation needed)
+- Added automatic IBKR `client_id` fallback on connect collisions (`326`):
+  - tries `base`, `base+1`, `base+2`, ... (configurable via `client_id_fallback_attempts`, default `5`)
+- Persists selected successful `active_client_id` back into saved encrypted broker credentials
+- `POST /clients/{id}/connect-broker` now returns:
+  - `active_client_id`
+  - `broker_credentials` (updated)
+- Files:
+  - `backend/brokers/ibkr.py`
+  - `backend/api/clients.py`
+  - `backend/tests/test_brokers.py`
 
-### Operator docs sync
-- Updated emergency halt runbook for admin bearer session flow
-- Added admin session operations runbook:
-  - `docs/runbooks/admin-session-operations.md`
-- Added screenshot shotlist template:
-  - `docs/screenshots/SHOTLIST.md`
-- Added Playwright screenshot capture spec:
-  - `frontend/e2e/screenshots.spec.ts`
-  - `npm run screenshots:e2e`
-- Added one-click screenshot runner:
-  - `capture_screenshots.bat`
+### Frontend UX updates
+- Password visibility eye toggle added to:
+  - Login page
+  - Onboarding page (user password + Phillip client secret)
+  - Admin Safety page (admin API key)
+- Files:
+  - `frontend/src/pages/LoginPage.tsx`
+  - `frontend/src/pages/OnboardingPage.tsx`
+  - `frontend/src/pages/AdminSafetyPage.tsx`
+  - `frontend/src/styles.css`
 
-### Admin auth hardening
-- Added admin session endpoint: `POST /admin/session/login`
-- Admin controls now use bearer token session flow (`Unlock Admin` / `Lock Admin`)
-- Retained `X-Admin-Key` fallback in backend for compatibility
+### Scrolling and layout hardening
+- Added global/custom scrollbars (WebKit + Firefox)
+- Ensured shell sidebar and main layout have explicit scrolling behavior for long content
+- File:
+  - `frontend/src/styles.css`
 
-### Websocket test depth
-- Added multi-transition websocket tests for same-order lifecycle updates
-- Coverage now includes `submitted -> partially_filled -> filled` sequence assertions
+### Startup reliability
+- `start.bat` now checks `docker info` first and shows clear message if Docker Engine is not running
+- File:
+  - `start.bat`
 
-### E2E smoke refresh
-- Updated Playwright smoke to assert:
-  - `Safety Policy` visibility
-  - modal execute flow (`Trade Ticket Confirmation`)
-  - lifecycle source label (`Source: websocket|polling`)
-
-### Deployment hardening
-- Added Railway deploy profile: `railway.json`
-- Added Render blueprint: `render.yaml`
-- Added pre-deploy env validator: `scripts/validate_env.py`
-- Added post-deploy smoke check runner: `scripts/post_deploy_smoke.py`
-- Updated `README.md` with deployment validation/smoke commands
-
-### Agent Console: execution-safe product flow
-- Simple execute flow: select proposal -> preflight -> execute -> status/fill tracking
-- Lifecycle states: `Pending`, `Sent to broker`, `Partially filled`, `Filled`, `Rejected`
-- Trade Ticket modal before execute (`Cancel` / `Confirm Execute`)
-- Guardrails:
-  - confirmation checkbox required in confirmation mode
-  - execute blocked with inline reason when halt/readiness/risk fails
-- Keyboard/accessibility:
-  - `Esc` closes modal
-  - `Enter` confirms execute (when allowed)
-  - focus trap + initial focus on `Cancel`
-- Coded toasts (non-flashy): `[OK]`, `[WARN]`, `[ERR]`
-- Copy action on each toast line
-
-### Agent Console: safety and trust
-- Always-visible `Safety Policy` section:
-  - mode
-  - delta threshold
-  - max size
-  - max loss
-  - max open positions
-  - global halt state
-- Inline global kill switch UX:
-  - admin key + reason + confirmation text (`HALT`)
-  - enable halt / resume trading buttons
-- Global halt read-only overlay in Trade Assistant area
-
-### Agent Console: reliability and observability
-- Broker link badge in state bar (`UP`/`DOWN`) + last check timestamp
-- Quick `Reconnect Broker` action in Agent Console
-- Reconnect retries/backoff indicator (`attempt x/3`, `next in Ns`)
-- Execution Audit panel:
-  - last 10 events
-  - actor/action/result/detail/timestamp
-  - per-row copy line
-- Audit entries persisted per client in localStorage
-
-### Broker-native lifecycle updates
-- Backend websocket now emits `order_status` events from latest trade changes
-- Frontend consumes `order_status` and updates lifecycle from stream
-- Lifecycle shows source: `websocket` vs `polling` vs `none`
-
-### Onboarding reliability
-- Onboarding no longer hard-fails if broker connect fails
-- Guided Broker Setup appears on failure:
-  - preflight checklist
-  - fix hints
-  - one-click `Retry Broker Connect`
-  - optional `Continue To Dashboard`
-- Copy action for each onboarding fix hint
+### Earlier same-day visual polish
+- Scoped reskin for Dashboard, Broker Settings, Strategy Templates, Admin Safety, Login, Onboarding
+- Accessibility additions: `:focus-visible`, reduced motion, mobile topbar wrapping
 
 ## 3) Most Recent Commits (Newest First)
-- `7b19661` Sync docs with admin session, websocket, and e2e updates
-- `4914222` Refresh smoke e2e for safety policy and modal execution
-- `e69a9ea` Expand websocket integration coverage for multi-step fills
-- `ce1009a` Harden admin controls with session token flow
-- `2414111` Emit websocket order status transitions for multiple trades
-- `ffabdd2` Add deployment hardening profiles and smoke tooling
-- `5ebcb72` Add tests for websocket order status stream mapping
-- `94ef0ff` Show lifecycle source as websocket or polling
-- `746ebdb` Add websocket order_status stream and live lifecycle updates
-- `cdd1a21` Refresh 00_HANDOFF with latest product and delivery state
-- `38b5dec` Add copy action for onboarding auto-fix hints
-- `07117ef` Add guided broker setup checklist and retry on onboarding
-- `bb042e6` Add read-only lock overlay for global halt mode
-- `d784a63` Add always-visible safety policy and inline kill switch UX
-- `c2b2fe7` Harden AgentConsole tests with stable test ids
-- `7e9e733` Persist execution audit entries per client in local storage
+- `817e2aa` Auto-fallback IBKR client IDs on connect collisions
+- `14f14cc` Add global/custom scrollbars and shell content scrolling
+- `4d9c82e` Add password visibility toggles and harden start script Docker check
+- `8d56690` Polish frontend accessibility and update handoff
+- `0f9b01a` Reskin remaining frontend pages with scoped visual styles
+- `ca1bb6a` Add repo-level AI operating protocol and fast mode
+- `dc6fd39` Reskin agent console internals with scoped operator styling
+- `449aa36` Reskin app shell with operator-style navigation layout
+- `1e6cc9d` Add one-click screenshot capture runner
+- `c6e4203` Add Playwright automation for docs screenshots
 
 ## 4) How To Run (Newbie Friendly)
 ### Easiest
@@ -135,17 +67,17 @@ From repo root, double-click:
 - `stop.bat`
 
 ### Manual
-Terminal A (infra):
+Terminal A:
 ```powershell
 docker compose up -d postgres redis
 ```
 
-Terminal B (backend):
+Terminal B:
 ```powershell
 .\.venv\Scripts\python.exe -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Terminal C (frontend):
+Terminal C:
 ```powershell
 cd frontend
 npm.cmd run dev
@@ -154,41 +86,48 @@ npm.cmd run dev
 ## 5) Quick Health Checks
 - Backend OpenAPI: `http://localhost:8000/openapi.json`
 - Frontend: `http://localhost:5173`
-- Agent Console visible checks:
-  - `Broker Link` (`UP`/`DOWN`)
-  - `Safety Policy`
-  - `Execution Audit`
-  - lifecycle `Source: websocket|polling|none`
+- Reconnect broker endpoint returns `active_client_id` when fallback occurs
+- UI checks:
+  - password eye toggles render and work
+  - scrollbars visible on long pages/panels
+  - Agent console still shows `Safety Policy`, `Broker Link`, `Execution Audit`
 
-## 6) Known Environment Notes
-- PowerShell script policy warning can appear on each command (non-blocking)
-- If `npm` alias is blocked, use `npm.cmd`
-- In restricted environments, Vitest/Vite may fail with `spawn EPERM`; TypeScript compile still works:
-```powershell
-cd frontend
-npx tsc -b
-```
+## 6) Verified Tests / Commands
+- Backend:
+  - `.\.venv\Scripts\python.exe -m pytest backend/tests/test_brokers.py -q` (passed)
+  - `.\.venv\Scripts\python.exe -m pytest backend/tests/test_clients_preflight.py -q` (passed)
+- Frontend compile:
+  - `cd frontend && npx.cmd tsc -b` (passed)
 
-## 7) Pending (Product)
+## 7) Known Environment Notes
+- PowerShell execution-policy warning appears in this environment (non-blocking)
+- If `npm` command is blocked by policy, use `npm.cmd`
+- In restricted environments, Vite/Vitest/Playwright may fail with `spawn EPERM`
+  - fallback verification: TypeScript compile + manual UI test
+
+## 8) Pending (Product)
 1. Capture and publish screenshots/GIF
-- Run `capture_screenshots.bat` from repo root and commit generated images from `docs/screenshots/`.
-- Note: in restricted environments this may fail with `spawn EPERM`; run locally in your normal terminal session.
+- Run `capture_screenshots.bat` locally and commit `docs/screenshots/*.png`
+- In this environment it may fail with `spawn EPERM`
 
-## 8) Important Files
-- Primary handoff: `00_HANDOFF.md`
-- Previous handoff archive: `HANDOFF.md`
-- Deployment env validator: `scripts/validate_env.py`
-- Post-deploy smoke checks: `scripts/post_deploy_smoke.py`
-- Railway profile: `railway.json`
-- Render profile: `render.yaml`
-- Agent Console: `frontend/src/pages/AgentConsolePage.tsx`
-- Agent Console tests: `frontend/src/pages/AgentConsolePage.test.tsx`
-- Websocket stream API: `backend/api/websocket.py`
-- Websocket test: `backend/tests/test_websocket_order_status.py`
-- Playwright smoke: `frontend/e2e/smoke.spec.ts`
-- Admin session runbook: `docs/runbooks/admin-session-operations.md`
-- Screenshot checklist: `docs/screenshots/SHOTLIST.md`
-- One-click screenshot runner: `capture_screenshots.bat`
-- Onboarding: `frontend/src/pages/OnboardingPage.tsx`
-- Onboarding tests: `frontend/src/pages/OnboardingPage.test.tsx`
-- Frontend styles: `frontend/src/styles.css`
+2. Sanity test reconnect fallback UX
+- From Broker Settings:
+  - set an in-use `client_id`
+  - click reconnect
+  - verify connect succeeds and returned `active_client_id` differs (auto-fallback path)
+
+3. Optional repo hygiene
+- Decide what to do with local modified `frontend/src/pages/AgentConsolePage.test.tsx`
+  - commit intentionally, or revert locally if unintended
+
+## 9) Important Files
+- `00_HANDOFF.md`
+- `start.bat`
+- `backend/api/clients.py`
+- `backend/brokers/ibkr.py`
+- `backend/tests/test_brokers.py`
+- `frontend/src/pages/LoginPage.tsx`
+- `frontend/src/pages/OnboardingPage.tsx`
+- `frontend/src/pages/AdminSafetyPage.tsx`
+- `frontend/src/styles.css`
+- `capture_screenshots.bat`
