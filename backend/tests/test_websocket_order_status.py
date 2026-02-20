@@ -1,4 +1,5 @@
 import uuid
+from typing import Any
 
 import pytest
 from fastapi import FastAPI
@@ -24,6 +25,17 @@ class _FakeAgent:
 class _FakeManager:
     async def get_agent(self, *_args, **_kwargs) -> _FakeAgent:
         return _FakeAgent()
+
+
+def _wait_for_order_status(ws: Any, order_id: str, status: str, max_events: int = 10) -> dict[str, Any]:
+    for _ in range(max_events):
+        event = ws.receive_json()
+        if event.get("type") != "order_status":
+            continue
+        payload = event.get("data", {})
+        if payload.get("order_id") == order_id and payload.get("status") == status:
+            return payload
+    raise AssertionError(f"Did not receive order_status transition for order_id={order_id}, status={status}")
 
 
 @pytest.mark.asyncio
@@ -179,5 +191,81 @@ async def test_websocket_stream_emits_multiple_trade_transitions(monkeypatch: py
                     transitioned = True
                     break
             assert transitioned
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_websocket_stream_emits_sequential_status_updates_for_same_order(monkeypatch: pytest.MonkeyPatch) -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    client_id = uuid.uuid4()
+
+    async with session_maker() as db:
+        db.add(
+            Client(
+                id=client_id,
+                email="ws-sequential-transitions@example.com",
+                hashed_password="hashed",
+                broker_type="ibkr",
+                encrypted_creds="enc",
+                risk_params={"delta_threshold": 0.2},
+                mode="confirmation",
+                tier="basic",
+                is_active=True,
+            )
+        )
+        db.add(
+            Trade(
+                client_id=client_id,
+                action="SELL",
+                symbol="ES",
+                instrument="FOP",
+                qty=2,
+                fill_price=None,
+                order_id="OID-WS-SEQ-1",
+                agent_reasoning="sequential transition test",
+                mode="confirmation",
+                status="submitted",
+                pnl=0.0,
+            )
+        )
+        await db.commit()
+
+    app = FastAPI()
+    app.include_router(websocket_api.router)
+    app.state.db_sessionmaker = session_maker
+    app.state.agent_manager = _FakeManager()
+
+    monkeypatch.setattr(websocket_api, "decode_access_token", lambda _token: client_id)
+    monkeypatch.setattr(websocket_api.vault, "decrypt", lambda _cipher: {"host": "localhost", "port": 4002, "client_id": 1})
+
+    with TestClient(app) as test_client:
+        with test_client.websocket_connect(f"/clients/{client_id}/stream?token=test-token") as ws:
+            initial = _wait_for_order_status(ws, "OID-WS-SEQ-1", "submitted")
+            assert initial["fill_price"] is None
+
+            async with session_maker() as db:
+                row = await db.execute(select(Trade).where(Trade.order_id == "OID-WS-SEQ-1"))
+                trade = row.scalar_one()
+                trade.status = "partially_filled"
+                trade.fill_price = 9.75
+                await db.commit()
+
+            partial = _wait_for_order_status(ws, "OID-WS-SEQ-1", "partially_filled")
+            assert partial["fill_price"] == 9.75
+
+            async with session_maker() as db:
+                row = await db.execute(select(Trade).where(Trade.order_id == "OID-WS-SEQ-1"))
+                trade = row.scalar_one()
+                trade.status = "filled"
+                trade.fill_price = 10.25
+                await db.commit()
+
+            filled = _wait_for_order_status(ws, "OID-WS-SEQ-1", "filled")
+            assert filled["fill_price"] == 10.25
 
     await engine.dispose()
