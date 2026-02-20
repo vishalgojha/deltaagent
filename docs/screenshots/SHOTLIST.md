@@ -3,7 +3,12 @@
 Capture these images from latest UI build and store in this folder.
 
 ## One-command capture
-From `frontend/`:
+From repo root (recommended):
+```bash
+capture_screenshots.bat
+```
+
+Alternative from `frontend/`:
 ```bash
 npm run screenshots:e2e
 ```

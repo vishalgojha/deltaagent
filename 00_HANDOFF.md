@@ -18,6 +18,8 @@ Last updated: 2026-02-20
 - Added Playwright screenshot capture spec:
   - `frontend/e2e/screenshots.spec.ts`
   - `npm run screenshots:e2e`
+- Added one-click screenshot runner:
+  - `capture_screenshots.bat`
 
 ### Admin auth hardening
 - Added admin session endpoint: `POST /admin/session/login`
@@ -154,7 +156,7 @@ npx tsc -b
 
 ## 7) Pending (Product)
 1. Capture and publish screenshots/GIF
-- Run `npm run screenshots:e2e` from `frontend/` and commit generated images from `docs/screenshots/`.
+- Run `capture_screenshots.bat` from repo root and commit generated images from `docs/screenshots/`.
 
 ## 8) Important Files
 - Primary handoff: `00_HANDOFF.md`
@@ -170,6 +172,7 @@ npx tsc -b
 - Playwright smoke: `frontend/e2e/smoke.spec.ts`
 - Admin session runbook: `docs/runbooks/admin-session-operations.md`
 - Screenshot checklist: `docs/screenshots/SHOTLIST.md`
+- One-click screenshot runner: `capture_screenshots.bat`
 - Onboarding: `frontend/src/pages/OnboardingPage.tsx`
 - Onboarding tests: `frontend/src/pages/OnboardingPage.test.tsx`
 - Frontend styles: `frontend/src/styles.css`

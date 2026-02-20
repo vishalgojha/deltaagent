@@ -127,6 +127,7 @@ Broker-related API failures now return structured `detail` payloads for telemetr
 - Broker reconnect/failure triage: `docs/runbooks/broker-failure-triage.md`
 - Postgres RLS tenant debugging: `docs/runbooks/rls-tenant-debugging.md`
 - Screenshot shotlist: `docs/screenshots/SHOTLIST.md`
+- Screenshot capture helper (Windows): `capture_screenshots.bat`
 
 ## Deployment Hardening
 
