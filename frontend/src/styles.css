@@ -36,6 +36,11 @@ body,
   min-height: 100%;
 }
 
+html {
+  scrollbar-color: rgba(91, 105, 130, 0.9) rgba(11, 15, 22, 0.95);
+  scrollbar-width: thin;
+}
+
 body {
   margin: 0;
   font-family: var(--font-ui);
@@ -46,6 +51,25 @@ body {
     linear-gradient(170deg, var(--bg-0) 0%, var(--bg-1) 55%, var(--bg-2) 100%);
   background-attachment: fixed;
   font-size: 13px;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: rgba(11, 15, 22, 0.92);
+}
+
+*::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(91, 105, 130, 0.92), rgba(74, 144, 217, 0.88));
+  border-radius: 999px;
+  border: 2px solid rgba(11, 15, 22, 0.95);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(125, 140, 170, 0.95), rgba(0, 212, 170, 0.82));
 }
 
 a {
@@ -110,6 +134,7 @@ pre {
   min-height: 100vh;
   position: sticky;
   top: 0;
+  overflow-y: auto;
 }
 
 .shell-logo {
@@ -254,6 +279,8 @@ pre {
   margin: 0 auto;
   max-width: 1480px;
   padding: 14px;
+  max-height: calc(100vh - 54px);
+  overflow-y: auto;
 }
 
 .shell-halt-banner {
