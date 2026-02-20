@@ -14,6 +14,15 @@ if errorlevel 1 (
   exit /b 1
 )
 
+docker info >nul 2>nul
+if errorlevel 1 (
+  echo [ERROR] Docker Engine is not running.
+  echo Open Docker Desktop and wait until it shows "Engine running", then run start.bat again.
+  echo If it still fails, restart Docker Desktop once.
+  pause
+  exit /b 1
+)
+
 echo [1/3] Starting Postgres + Redis via Docker...
 docker compose up -d postgres redis
 if errorlevel 1 (
