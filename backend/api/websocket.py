@@ -47,7 +47,7 @@ async def stream_client(websocket: WebSocket, id: uuid.UUID) -> None:
                 return
             agent = await manager.get_agent(id, client.broker_type, creds, db)
             last_memory_id = 0
-            last_trade_marker: tuple[int, str, float | None] | None = None
+            trade_markers: dict[int, tuple[str, float | None]] = {}
             while True:
                 status_payload = await agent.status(id)
                 if "client_id" in status_payload:
@@ -78,18 +78,24 @@ async def stream_client(websocket: WebSocket, id: uuid.UUID) -> None:
                         }
                     )
 
+                db.expire_all()
                 trade_stmt = (
                     select(Trade)
                     .where(Trade.client_id == id)
                     .order_by(desc(Trade.timestamp), desc(Trade.id))
-                    .limit(1)
+                    .limit(10)
                 )
                 trade_row = await db.execute(trade_stmt)
-                latest_trade = trade_row.scalar_one_or_none()
-                if latest_trade is not None:
-                    marker = (latest_trade.id, latest_trade.status, latest_trade.fill_price)
-                    if marker != last_trade_marker:
-                        last_trade_marker = marker
+                latest_trades = trade_row.scalars().all()
+                live_ids = {trade.id for trade in latest_trades}
+                if trade_markers:
+                    stale = [trade_id for trade_id in trade_markers if trade_id not in live_ids]
+                    for trade_id in stale:
+                        del trade_markers[trade_id]
+                for latest_trade in reversed(latest_trades):
+                    marker = (latest_trade.status, latest_trade.fill_price)
+                    if marker != trade_markers.get(latest_trade.id):
+                        trade_markers[latest_trade.id] = marker
                         await websocket.send_json(
                             {
                                 "type": "order_status",

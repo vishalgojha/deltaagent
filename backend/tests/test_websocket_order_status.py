@@ -3,6 +3,7 @@ import uuid
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from backend.api import websocket as websocket_api
@@ -90,3 +91,93 @@ async def test_websocket_stream_emits_order_status_event(monkeypatch: pytest.Mon
 
     await engine.dispose()
 
+
+@pytest.mark.asyncio
+async def test_websocket_stream_emits_multiple_trade_transitions(monkeypatch: pytest.MonkeyPatch) -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    client_id = uuid.uuid4()
+
+    async with session_maker() as db:
+        db.add(
+            Client(
+                id=client_id,
+                email="ws-order-transitions@example.com",
+                hashed_password="hashed",
+                broker_type="ibkr",
+                encrypted_creds="enc",
+                risk_params={"delta_threshold": 0.2},
+                mode="confirmation",
+                tier="basic",
+                is_active=True,
+            )
+        )
+        db.add(
+            Trade(
+                client_id=client_id,
+                action="SELL",
+                symbol="ES",
+                instrument="FOP",
+                qty=1,
+                fill_price=None,
+                order_id="OID-WS-A",
+                agent_reasoning="stream test a",
+                mode="confirmation",
+                status="submitted",
+                pnl=0.0,
+            )
+        )
+        db.add(
+            Trade(
+                client_id=client_id,
+                action="BUY",
+                symbol="NQ",
+                instrument="FOP",
+                qty=1,
+                fill_price=12.0,
+                order_id="OID-WS-B",
+                agent_reasoning="stream test b",
+                mode="confirmation",
+                status="filled",
+                pnl=0.0,
+            )
+        )
+        await db.commit()
+
+    app = FastAPI()
+    app.include_router(websocket_api.router)
+    app.state.db_sessionmaker = session_maker
+    app.state.agent_manager = _FakeManager()
+
+    monkeypatch.setattr(websocket_api, "decode_access_token", lambda _token: client_id)
+    monkeypatch.setattr(websocket_api.vault, "decrypt", lambda _cipher: {"host": "localhost", "port": 4002, "client_id": 1})
+
+    with TestClient(app) as test_client:
+        with test_client.websocket_connect(f"/clients/{client_id}/stream?token=test-token") as ws:
+            received = [ws.receive_json() for _ in range(3)]
+            order_events = [evt for evt in received if evt.get("type") == "order_status"]
+            order_ids = {evt["data"]["order_id"] for evt in order_events}
+            assert {"OID-WS-A", "OID-WS-B"}.issubset(order_ids)
+
+            async with session_maker() as db:
+                row = await db.execute(select(Trade).where(Trade.order_id == "OID-WS-A"))
+                trade = row.scalar_one()
+                trade.status = "partially_filled"
+                trade.fill_price = 10.25
+                await db.commit()
+
+            transitioned = False
+            for _ in range(6):
+                evt = ws.receive_json()
+                if evt.get("type") != "order_status":
+                    continue
+                payload = evt.get("data", {})
+                if payload.get("order_id") == "OID-WS-A" and payload.get("status") == "partially_filled":
+                    transitioned = True
+                    break
+            assert transitioned
+
+    await engine.dispose()
