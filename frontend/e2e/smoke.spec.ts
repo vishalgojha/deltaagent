@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("login -> chat proposal -> approve/reject (real backend, mock broker)", async ({ page, request }) => {
+test("login -> chat proposal -> modal execute -> reject (real backend, mock broker)", async ({ page, request }) => {
   const suffix = `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
   const email = `smoke-${suffix}@example.com`;
   const password = "SmokePass123!";
@@ -47,13 +47,16 @@ test("login -> chat proposal -> approve/reject (real backend, mock broker)", asy
   await expect(page).toHaveURL(/\/dashboard$/);
   await page.getByRole("link", { name: "Agent Console" }).click();
   await expect(page).toHaveURL(/\/agent$/);
+  await expect(page.getByRole("heading", { name: "Safety Policy" })).toBeVisible();
 
   await page.getByPlaceholder("Ask the agent...").fill("Rebalance now");
   await page.getByRole("button", { name: "Send" }).click();
-  const firstQuickCard = page.locator(".proposal-quick-card").first();
-  await expect(firstQuickCard).toBeVisible();
-  await firstQuickCard.getByRole("button", { name: "Approve Proposal" }).click();
+  await page.getByTestId("execute-confirm-checkbox").click();
+  await page.getByTestId("execute-trade-button").click();
+  await expect(page.getByRole("dialog", { name: "Trade Ticket Confirmation" })).toBeVisible();
+  await page.getByTestId("trade-ticket-confirm-button").click();
   await expect(page.locator("p", { hasText: /Proposal #\d+ approved\./ }).first()).toBeVisible();
+  await expect(page.getByText(/Source:\s*(websocket|polling)/)).toBeVisible();
 
   await page.getByPlaceholder("Ask the agent...").fill("Rebalance now");
   await page.getByRole("button", { name: "Send" }).click();
