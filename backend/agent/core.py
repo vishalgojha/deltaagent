@@ -565,6 +565,19 @@ class TradingAgent:
                 if fallback_trade is not None and not self._is_executable_trade(ollama_response.get("trade")):
                     ollama_response["trade"] = fallback_trade
                 return ollama_response
+        elif backend_choice == "openrouter":
+            openrouter_response = await self._call_openrouter(
+                mode=mode,
+                message=message,
+                context=context,
+                fallback_reasoning=fallback_reasoning,
+                fallback_trade=fallback_trade,
+                tool_trace_id=tool_trace_id,
+            )
+            if openrouter_response is not None:
+                if fallback_trade is not None and not self._is_executable_trade(openrouter_response.get("trade")):
+                    openrouter_response["trade"] = fallback_trade
+                return openrouter_response
 
         if not self.settings.anthropic_api_key:
             return {
@@ -688,7 +701,7 @@ class TradingAgent:
 
     def _resolve_decision_backend(self, parameters: dict[str, Any] | None) -> str:
         chosen = str((parameters or {}).get("decision_backend", self.settings.decision_backend_default)).strip().lower()
-        if chosen in {"deterministic", "ollama", "anthropic"}:
+        if chosen in {"deterministic", "ollama", "openrouter", "anthropic"}:
             return chosen
         return self.settings.decision_backend_default
 
@@ -748,6 +761,79 @@ class TradingAgent:
             }
         except Exception as exc:  # noqa: BLE001
             logger.warning("Ollama call failed, falling back", extra={"error": str(exc)})
+            return None
+
+    async def _call_openrouter(
+        self,
+        mode: str,
+        message: str,
+        context: Any,
+        fallback_reasoning: str,
+        fallback_trade: dict[str, Any] | None,
+        tool_trace_id: str,
+    ) -> dict[str, Any] | None:
+        if not self.settings.openrouter_api_key:
+            return None
+
+        prompt = CONFIRMATION_PROMPT if mode == "confirmation" else AUTONOMOUS_PROMPT
+        system = (
+            f"{prompt}\n\n"
+            "Respond with strict JSON only with keys: reasoning (string), trade (object|null).\n"
+            "If no trade, set trade to null."
+        )
+        user = (
+            f"User message: {message}\n"
+            f"Client mode: {mode}\n"
+            f"Context net greeks: {json.dumps(context.net_greeks)}"
+        )
+        body = {
+            "model": self.settings.openrouter_model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "temperature": 0.1,
+        }
+        headers = {
+            "Authorization": f"Bearer {self.settings.openrouter_api_key}",
+            "Content-Type": "application/json",
+        }
+        if self.settings.openrouter_site_url:
+            headers["HTTP-Referer"] = self.settings.openrouter_site_url
+        if self.settings.openrouter_app_name:
+            headers["X-Title"] = self.settings.openrouter_app_name
+
+        try:
+            timeout = httpx.Timeout(25.0, connect=5.0)
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                res = await client.post(f"{self.settings.openrouter_base_url}/chat/completions", headers=headers, json=body)
+                res.raise_for_status()
+                payload = res.json()
+            content = (
+                payload.get("choices", [{}])[0]
+                .get("message", {})
+                .get("content")
+            )
+            if not isinstance(content, str) or not content.strip():
+                return None
+            text = content.strip()
+            if text.startswith("```"):
+                text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
+                text = re.sub(r"\s*```$", "", text)
+            parsed = json.loads(text)
+            parsed_trade = parsed.get("trade") if "trade" in parsed else fallback_trade
+            if not self._is_executable_trade(parsed_trade) and fallback_trade is not None:
+                parsed_trade = fallback_trade
+            return {
+                "reasoning": parsed.get("reasoning", fallback_reasoning),
+                "trade": parsed_trade,
+                "tool_trace_id": tool_trace_id,
+                "planned_tools": [],
+                "tool_calls": [],
+                "tool_results": [],
+            }
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("OpenRouter call failed, falling back", extra={"error": str(exc)})
             return None
 
     def _empty_tool_metadata(self) -> dict[str, Any]:

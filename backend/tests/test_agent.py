@@ -447,3 +447,18 @@ async def test_confirmation_mode_handles_relative_expiry_and_multileg_preview() 
         assert "BUY 1 lots" in result["message"]
         assert "delta| 0.30" in result["message"]
         assert result.get("proposal_id") is None
+
+
+@pytest.mark.asyncio
+async def test_resolve_decision_backend_accepts_openrouter() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with session_maker() as db:
+        broker = MockBroker()
+        await broker.connect()
+        agent = TradingAgent(broker, db, AgentMemoryStore(), RiskGovernor())
+        backend = agent._resolve_decision_backend({"decision_backend": "openrouter"})
+        assert backend == "openrouter"

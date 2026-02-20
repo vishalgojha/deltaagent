@@ -54,6 +54,9 @@ Minimum local safe setup:
 - `ADMIN_API_KEY=<strong-random-secret-for-admin-endpoints>`
 - `AUTO_CREATE_TABLES=true` (dev only)
 - `CORS_ORIGINS=http://localhost:3000,http://localhost:5173`
+- `DECISION_BACKEND_DEFAULT=ollama|openrouter|deterministic|anthropic`
+- `OPENROUTER_API_KEY=<your-openrouter-key>` (required for OpenRouter mode)
+- `OPENROUTER_MODEL=openai/gpt-4o-mini`
 
 ## Run Locally
 
@@ -79,6 +82,16 @@ npm run dev
 ```
 
 Frontend default URL: `http://localhost:5173`
+
+## CLI Helper (API)
+
+Use the lightweight CLI to login, switch backend (including OpenRouter), and chat:
+
+```bash
+python scripts/agent_cli.py login --base-url http://localhost:8000 --email you@example.com --password yourpass
+python scripts/agent_cli.py set-backend --backend openrouter
+python scripts/agent_cli.py chat --message "Rebalance delta to neutral"
+```
 
 ## Test
 

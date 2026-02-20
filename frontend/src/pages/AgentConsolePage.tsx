@@ -175,7 +175,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
   const queryClient = useQueryClient();
   const [message, setMessage] = useState("");
   const [mode, setModeUi] = useState<"confirmation" | "autonomous">("confirmation");
-  const [decisionBackend, setDecisionBackendUi] = useState<"ollama" | "deterministic">("ollama");
+  const [decisionBackend, setDecisionBackendUi] = useState<"ollama" | "deterministic" | "openrouter">("ollama");
   const [runs, setRuns] = useState<TimelineRun[]>([]);
   const [expandedToolItems, setExpandedToolItems] = useState<Record<string, boolean>>({});
   const [expandedWorkflowSteps, setExpandedWorkflowSteps] = useState<Record<string, boolean>>({});
@@ -392,7 +392,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
 
   useEffect(() => {
     const backendRaw = (parametersQuery.data?.risk_parameters as Record<string, unknown> | undefined)?.decision_backend;
-    if (backendRaw === "deterministic" || backendRaw === "ollama") {
+    if (backendRaw === "deterministic" || backendRaw === "ollama" || backendRaw === "openrouter") {
       setDecisionBackendUi(backendRaw);
       return;
     }
@@ -425,7 +425,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
   });
 
   const decisionBackendMutation = useMutation({
-    mutationFn: (nextBackend: "ollama" | "deterministic") =>
+    mutationFn: (nextBackend: "ollama" | "deterministic" | "openrouter") =>
       updateAgentParameters(clientId, { decision_backend: nextBackend }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["agent-parameters", clientId] });
@@ -754,7 +754,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
     }
   }
 
-  async function onDecisionBackendChange(nextBackend: "ollama" | "deterministic") {
+  async function onDecisionBackendChange(nextBackend: "ollama" | "deterministic" | "openrouter") {
     setError("");
     try {
       await decisionBackendMutation.mutateAsync(nextBackend);
@@ -1550,9 +1550,10 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
             <select
               style={{ marginLeft: 8 }}
               value={decisionBackend}
-              onChange={(e) => onDecisionBackendChange(e.target.value as "ollama" | "deterministic")}
+              onChange={(e) => onDecisionBackendChange(e.target.value as "ollama" | "deterministic" | "openrouter")}
             >
               <option value="ollama">Ollama (Default)</option>
+              <option value="openrouter">OpenRouter</option>
               <option value="deterministic">Deterministic Logic</option>
             </select>
           </label>
