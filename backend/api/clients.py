@@ -65,7 +65,22 @@ async def connect_broker(
         raise broker_http_exception(exc, operation="connect", broker=current_client.broker_type) from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=f"Broker connection failed: {exc}") from exc
-    return {"connected": True, "client_id": id, "broker": current_client.broker_type}
+    active_client_id = None
+    if current_client.broker_type == "ibkr":
+        active_client_id = getattr(getattr(agent, "broker", None), "_active_client_id", None)
+        if isinstance(active_client_id, int) and active_client_id != creds.get("client_id"):
+            updated = dict(creds)
+            updated["client_id"] = active_client_id
+            current_client.encrypted_creds = vault.encrypt(updated)
+            await db.commit()
+            creds = updated
+    return {
+        "connected": True,
+        "client_id": id,
+        "broker": current_client.broker_type,
+        "active_client_id": active_client_id,
+        "broker_credentials": creds,
+    }
 
 
 @router.post("/{id}/broker/preflight", response_model=BrokerPreflightResponse)

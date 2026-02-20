@@ -118,6 +118,17 @@ class _FakeIB:
         self.market_data_type = market_data_type
 
 
+class _FakeIBClientIdCollision:
+    def __init__(self) -> None:
+        self.calls: list[int] = []
+
+    async def connectAsync(self, host, port, clientId):  # noqa: N803, ANN001
+        self.calls.append(clientId)
+        if clientId == 12:
+            raise RuntimeError("Error 326: client id is already in use")
+        return True
+
+
 @pytest.mark.asyncio
 async def test_ibkr_submit_order_with_fake_ib() -> None:
     broker = IBKRBroker()
@@ -371,3 +382,16 @@ def test_ibkr_sets_delayed_market_data_type_when_enabled() -> None:
     broker._ib = fake_ib
     broker._configure_market_data_type()
     assert fake_ib.market_data_type == 3
+
+
+@pytest.mark.asyncio
+async def test_ibkr_connect_with_retry_uses_next_client_id_when_collision() -> None:
+    broker = IBKRBroker({"client_id": 12, "connect_retries": 1, "client_id_fallback_attempts": 3})
+    fake_ib = _FakeIBClientIdCollision()
+    broker._ib = fake_ib
+
+    ok = await broker._connect_with_retry()
+
+    assert ok is True
+    assert broker._active_client_id == 13
+    assert fake_ib.calls == [12, 13]

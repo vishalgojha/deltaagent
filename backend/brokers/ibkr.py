@@ -39,6 +39,7 @@ class IBKRBroker(BrokerBase):
         self._connected = False
         self._credentials = credentials or {}
         self._stream_enabled = False
+        self._active_client_id = int(self._credentials.get("client_id", 1))
 
     async def connect(self) -> None:
         try:
@@ -61,11 +62,14 @@ class IBKRBroker(BrokerBase):
                     "host": host,
                     "port": port,
                     "client_id": client_id,
+                    "active_client_id": self._active_client_id,
                     "retries": retries,
+                    "attempted_client_ids": self._build_client_id_candidates(client_id),
                     "last_error": "",
                 },
             )
         self._connected = True
+        self._credentials["client_id"] = self._active_client_id
         self._configure_market_data_type()
 
     async def get_positions(self) -> list[dict[str, Any]]:
@@ -422,20 +426,39 @@ class IBKRBroker(BrokerBase):
         cfg = get_settings()
         host = self._credentials.get("host", cfg.ibkr_gateway_host)
         port = int(self._credentials.get("port", cfg.ibkr_gateway_port))
-        client_id = int(self._credentials.get("client_id", 1))
+        base_client_id = int(self._credentials.get("client_id", 1))
         retries = int(self._credentials.get("connect_retries", 3))
         base_backoff = float(self._credentials.get("connect_backoff_seconds", 0.5))
+        client_id_candidates = self._build_client_id_candidates(base_client_id)
         ok = False
-        for attempt in range(1, retries + 1):
-            try:
-                ok = await self._ib.connectAsync(host, port, clientId=client_id)
-            except Exception:  # noqa: BLE001
-                ok = False
-            if ok:
-                return True
-            if attempt < retries:
-                await asyncio.sleep(base_backoff * (2 ** (attempt - 1)))
+        for candidate_idx, client_id in enumerate(client_id_candidates):
+            for attempt in range(1, retries + 1):
+                last_error = ""
+                try:
+                    ok = await self._ib.connectAsync(host, port, clientId=client_id)
+                except Exception as exc:  # noqa: BLE001
+                    last_error = str(exc)
+                    ok = False
+                if ok:
+                    self._active_client_id = client_id
+                    return True
+                if attempt < retries:
+                    await asyncio.sleep(base_backoff * (2 ** (attempt - 1)))
+            if last_error and not self._is_client_id_in_use_error(last_error):
+                break
+            if candidate_idx < len(client_id_candidates) - 1:
+                await asyncio.sleep(base_backoff)
         return False
+
+    def _build_client_id_candidates(self, base_client_id: int) -> list[int]:
+        fallback_attempts = int(self._credentials.get("client_id_fallback_attempts", 5))
+        fallback_attempts = max(fallback_attempts, 1)
+        return [base_client_id + offset for offset in range(fallback_attempts)]
+
+    @staticmethod
+    def _is_client_id_in_use_error(message: str) -> bool:
+        lowered = (message or "").lower()
+        return "client id is already in use" in lowered or "error 326" in lowered or ";326;" in lowered
 
     async def _ensure_connected(self) -> None:
         is_connected = bool(self._ib and getattr(self._ib, "isConnected", lambda: False)())
