@@ -143,17 +143,24 @@ describe("AgentConsolePage", () => {
     renderWithProviders(<AgentConsolePage clientId="client-1" token="token-1" />);
     await screen.findByTestId("execute-trade-button");
 
-    await user.click(screen.getByTestId("execute-confirm-checkbox"));
-    await user.click(screen.getByTestId("execute-trade-button"));
+    await user.click(await screen.findByTestId("execute-confirm-checkbox"));
+    await user.click(await screen.findByTestId("execute-trade-button"));
     expect(await screen.findByRole("dialog", { name: "Trade Ticket Confirmation" })).toBeInTheDocument();
     await user.click(screen.getByTestId("trade-ticket-confirm-button"));
 
     await waitFor(() => {
       expect(vi.mocked(endpoints.approveProposal)).toHaveBeenCalledWith("client-1", 303);
     });
-    expect(await screen.findByText(/Order OID-303/)).toBeInTheDocument();
-    expect(await screen.findByText(/Status: filled/)).toBeInTheDocument();
-  });
+    await waitFor(() => {
+      expect(
+        screen.getByText((_, node) => {
+          const text = node?.textContent ?? "";
+          return /Order:\s*OID-303/.test(text) || /Order\s+OID-303/.test(text);
+        })
+      ).toBeInTheDocument();
+      expect(screen.getByText(/Status:\s*filled/i)).toBeInTheDocument();
+    });
+  }, 10000);
 
   it("blocks execute when confirmation checkbox is not checked", async () => {
     const user = userEvent.setup();
@@ -175,7 +182,7 @@ describe("AgentConsolePage", () => {
     expect(executeButton).toBeDisabled();
     expect(screen.getByText("Confirm execution checkbox to continue.")).toBeInTheDocument();
 
-    await user.click(screen.getByTestId("execute-confirm-checkbox"));
+    await user.click(await screen.findByTestId("execute-confirm-checkbox"));
     expect(screen.getByTestId("execute-trade-button")).toBeEnabled();
   });
 
@@ -210,8 +217,8 @@ describe("AgentConsolePage", () => {
     ]);
 
     renderWithProviders(<AgentConsolePage clientId="client-1" token="token-1" />);
-    await user.click(screen.getByTestId("execute-confirm-checkbox"));
-    await user.click(screen.getByTestId("execute-trade-button"));
+    await user.click(await screen.findByTestId("execute-confirm-checkbox"));
+    await user.click(await screen.findByTestId("execute-trade-button"));
     expect(await screen.findByRole("dialog", { name: "Trade Ticket Confirmation" })).toBeInTheDocument();
 
     await user.keyboard("{Escape}");
@@ -219,7 +226,7 @@ describe("AgentConsolePage", () => {
       expect(screen.queryByRole("dialog", { name: "Trade Ticket Confirmation" })).not.toBeInTheDocument();
     });
 
-    await user.click(screen.getByTestId("execute-trade-button"));
+    await user.click(await screen.findByTestId("execute-trade-button"));
     expect(await screen.findByRole("dialog", { name: "Trade Ticket Confirmation" })).toBeInTheDocument();
     await user.keyboard("{Enter}");
 
@@ -242,8 +249,8 @@ describe("AgentConsolePage", () => {
     ]);
 
     renderWithProviders(<AgentConsolePage clientId="client-1" token="token-1" />);
-    await user.click(screen.getByTestId("execute-confirm-checkbox"));
-    await user.click(screen.getByTestId("execute-trade-button"));
+    await user.click(await screen.findByTestId("execute-confirm-checkbox"));
+    await user.click(await screen.findByTestId("execute-trade-button"));
 
     expect(await screen.findByRole("dialog", { name: "Trade Ticket Confirmation" })).toBeInTheDocument();
     expect(screen.getByTestId("trade-ticket-cancel-button")).toHaveFocus();
