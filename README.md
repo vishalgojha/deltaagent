@@ -99,8 +99,9 @@ pytest backend/tests -q
 - `POST /clients/{id}/agent/reject/{trade_id}`
 - `GET /clients/{id}/agent/status`
 - `GET /clients/{id}/agent/proposals`
-- `GET /admin/emergency-halt` (requires `X-Admin-Key`)
-- `POST /admin/emergency-halt` (requires `X-Admin-Key`)
+- `POST /admin/session/login` (admin key -> admin bearer token)
+- `GET /admin/emergency-halt` (requires admin bearer token; `X-Admin-Key` fallback supported)
+- `POST /admin/emergency-halt` (requires admin bearer token; `X-Admin-Key` fallback supported)
 - `WS /clients/{id}/stream`
 - `GET /health`
 - `GET /health/ready`
@@ -114,7 +115,7 @@ pytest backend/tests -q
 - Emergency trading halt is independent of autonomous mode and blocks all trade executions (including proposal approval), with audit entries written per tenant.
 - Postgres RLS is enabled for tenant tables (`positions`, `trades`, `proposals`, `audit_log`, `agent_memory`) and enforced using DB session context (`app.current_client_id`, `app.is_admin`) in addition to existing application-level tenant checks.
 - Redis keys are namespaced per tenant (for example `client:{client_id}:greeks` and `client:{client_id}:events`) to keep real-time state isolated.
-- WebSocket stream emits `agent_status`, `greeks`, and incremental `agent_message` events for live frontend updates.
+- WebSocket stream emits `agent_status`, `greeks`, incremental `agent_message`, and `order_status` events for live lifecycle transitions.
 
 Broker-related API failures now return structured `detail` payloads for telemetry:
 `{"type":"broker_error","operation":"...","broker":"ibkr|phillip","code":"...","message":"...","retryable":true|false,"context":{...}}`.
@@ -152,6 +153,16 @@ Smoke checks verify:
 - `/health`
 - `/openapi.json` strategy-template endpoints
 - `/health/ready`
+
+## E2E Smoke Scope
+
+Playwright smoke (`frontend/e2e/smoke.spec.ts`) covers:
+- login
+- proposal generation
+- modal-based execute confirmation (`Trade Ticket Confirmation`)
+- approve/reject paths
+- visible safety panel (`Safety Policy`)
+- lifecycle source indicator (`Source: websocket|polling`)
 
 ## Migrations (Alembic)
 

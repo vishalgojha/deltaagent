@@ -9,6 +9,21 @@ Last updated: 2026-02-20
 - CI baseline: use latest commit below and verify checks on GitHub Actions
 
 ## 2) What Was Just Completed
+### Admin auth hardening
+- Added admin session endpoint: `POST /admin/session/login`
+- Admin controls now use bearer token session flow (`Unlock Admin` / `Lock Admin`)
+- Retained `X-Admin-Key` fallback in backend for compatibility
+
+### Websocket test depth
+- Added multi-transition websocket tests for same-order lifecycle updates
+- Coverage now includes `submitted -> partially_filled -> filled` sequence assertions
+
+### E2E smoke refresh
+- Updated Playwright smoke to assert:
+  - `Safety Policy` visibility
+  - modal execute flow (`Trade Ticket Confirmation`)
+  - lifecycle source label (`Source: websocket|polling`)
+
 ### Deployment hardening
 - Added Railway deploy profile: `railway.json`
 - Added Render blueprint: `render.yaml`
@@ -68,6 +83,11 @@ Last updated: 2026-02-20
 - Copy action for each onboarding fix hint
 
 ## 3) Most Recent Commits (Newest First)
+- `4914222` Refresh smoke e2e for safety policy and modal execution
+- `e69a9ea` Expand websocket integration coverage for multi-step fills
+- `ce1009a` Harden admin controls with session token flow
+- `2414111` Emit websocket order status transitions for multiple trades
+- `ffabdd2` Add deployment hardening profiles and smoke tooling
 - `5ebcb72` Add tests for websocket order status stream mapping
 - `94ef0ff` Show lifecycle source as websocket or polling
 - `746ebdb` Add websocket order_status stream and live lifecycle updates
@@ -122,20 +142,9 @@ npx tsc -b
 ```
 
 ## 7) Pending (Product)
-1. Broker-native lifecycle depth
-- Add partial-fill/cancel/update transitions from broker adapters (beyond latest-trade row updates).
-
-2. Admin auth hardening
-- Replace raw admin-key entry in UI with secure admin session flow.
-
-3. Websocket test depth
-- Add multi-transition websocket integration tests over time.
-
-4. E2E refresh
-- Update Playwright smoke to assert safety policy, modal confirm, and lifecycle source.
-
-5. Docs sync
-- README + screenshots + operator runbook updates for current UX.
+1. Screenshots and operator docs
+- Add up-to-date screenshots/GIFs for Agent Console execute modal, Safety Policy, and lifecycle source.
+- Extend runbooks with admin session unlock/lock workflow and troubleshooting.
 
 ## 8) Important Files
 - Primary handoff: `00_HANDOFF.md`
@@ -148,6 +157,7 @@ npx tsc -b
 - Agent Console tests: `frontend/src/pages/AgentConsolePage.test.tsx`
 - Websocket stream API: `backend/api/websocket.py`
 - Websocket test: `backend/tests/test_websocket_order_status.py`
+- Playwright smoke: `frontend/e2e/smoke.spec.ts`
 - Onboarding: `frontend/src/pages/OnboardingPage.tsx`
 - Onboarding tests: `frontend/src/pages/OnboardingPage.test.tsx`
 - Frontend styles: `frontend/src/styles.css`
