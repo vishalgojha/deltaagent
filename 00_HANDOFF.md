@@ -15,6 +15,9 @@ Last updated: 2026-02-20
   - `docs/runbooks/admin-session-operations.md`
 - Added screenshot shotlist template:
   - `docs/screenshots/SHOTLIST.md`
+- Added Playwright screenshot capture spec:
+  - `frontend/e2e/screenshots.spec.ts`
+  - `npm run screenshots:e2e`
 
 ### Admin auth hardening
 - Added admin session endpoint: `POST /admin/session/login`
@@ -151,7 +154,7 @@ npx tsc -b
 
 ## 7) Pending (Product)
 1. Capture and publish screenshots/GIF
-- Follow `docs/screenshots/SHOTLIST.md` and add final visual assets to repo docs.
+- Run `npm run screenshots:e2e` from `frontend/` and commit generated images from `docs/screenshots/`.
 
 ## 8) Important Files
 - Primary handoff: `00_HANDOFF.md`

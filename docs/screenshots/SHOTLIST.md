@@ -2,6 +2,13 @@
 
 Capture these images from latest UI build and store in this folder.
 
+## One-command capture
+From `frontend/`:
+```bash
+npm run screenshots:e2e
+```
+This writes PNG files directly into `docs/screenshots/`.
+
 ## Required Shots
 1. `agent-console-safety-policy.png`
 - Page: Agent Console
