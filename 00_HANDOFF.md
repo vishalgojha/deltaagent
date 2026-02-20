@@ -1,6 +1,6 @@
 # START HERE: HANDOFF
 
-Last updated: 2026-02-20
+Last updated: 2026-02-21
 
 ## 1) Current State (Fast)
 - Branch: `main`
@@ -9,6 +9,24 @@ Last updated: 2026-02-20
   - `M frontend/src/pages/AgentConsolePage.test.tsx` (pre-existing local edit, intentionally not committed by agent)
 
 ## 2) What Was Just Completed
+### npm registry publish (frontend package)
+- Made frontend package publishable and published to npm registry:
+  - package name: `@vishalgojha/deltaagent-frontend`
+  - version: `0.1.0`
+- `frontend/package.json` updates:
+  - `private: false`
+  - added `publishConfig.access: "public"`
+  - added metadata (`repository`, `bugs`, `homepage`, `license`, `author`, `description`)
+  - added `files` allowlist for publish contents
+- Install command (works globally):
+  - `npm install @vishalgojha/deltaagent-frontend`
+
+### OpenRouter support end-to-end
+- Added OpenRouter support in backend decision engine + frontend backend selector + CLI helper.
+- Backend now supports `decision_backend=openrouter` with env-driven config.
+- Frontend Agent Console includes `OpenRouter` in backend dropdown.
+- Added helper CLI: `scripts/agent_cli.py` (`login`, `set-backend`, `chat`).
+
 ### IBKR reconnect reliability (no manual client-id rotation needed)
 - Added automatic IBKR `client_id` fallback on connect collisions (`326`):
   - tries `base`, `base+1`, `base+2`, ... (configurable via `client_id_fallback_attempts`, default `5`)
@@ -48,6 +66,7 @@ Last updated: 2026-02-20
 - Accessibility additions: `:focus-visible`, reduced motion, mobile topbar wrapping
 
 ## 3) Most Recent Commits (Newest First)
+- `4187b2a` Add OpenRouter support across backend frontend and CLI helper
 - `817e2aa` Auto-fallback IBKR client IDs on connect collisions
 - `14f14cc` Add global/custom scrollbars and shell content scrolling
 - `4d9c82e` Add password visibility toggles and harden start script Docker check
@@ -119,6 +138,10 @@ npm.cmd run dev
 3. Optional repo hygiene
 - Decide what to do with local modified `frontend/src/pages/AgentConsolePage.test.tsx`
   - commit intentionally, or revert locally if unintended
+
+4. Optional npm package follow-up
+- Add explicit library exports/entrypoint if package should be consumed as a component library (currently published as app source package)
+- Publish patch release (`0.1.1`) if export shape or docs are adjusted
 
 ## 9) Important Files
 - `00_HANDOFF.md`
