@@ -26,6 +26,12 @@ def create_access_token(client_id: uuid.UUID) -> str:
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 
+def create_admin_token(actor: str = "admin") -> str:
+    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_expire_minutes)
+    payload = {"sub": actor, "role": "admin", "exp": expire}
+    return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+
+
 def decode_access_token(token: str) -> uuid.UUID:
     try:
         payload = jwt.decode(
@@ -39,3 +45,20 @@ def decode_access_token(token: str) -> uuid.UUID:
     if not subject:
         raise ValueError("Invalid token payload")
     return uuid.UUID(subject)
+
+
+def decode_admin_token(token: str) -> str:
+    try:
+        payload = jwt.decode(
+            token,
+            settings.jwt_secret,
+            algorithms=[settings.jwt_algorithm],
+        )
+    except JWTError as exc:
+        raise ValueError("Invalid admin token") from exc
+    if payload.get("role") != "admin":
+        raise ValueError("Invalid admin token payload")
+    subject = payload.get("sub")
+    if not subject or not isinstance(subject, str):
+        raise ValueError("Invalid admin token payload")
+    return subject

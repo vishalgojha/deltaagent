@@ -1,6 +1,7 @@
 import { api } from "./client";
 import type {
   AgentStatus,
+  AdminSessionLogin,
   BrokerPreflight,
   AgentReadiness,
   ChatResponse,
@@ -71,16 +72,23 @@ export function getEmergencyHaltStatus(clientId: string) {
   return api<EmergencyHaltStatus>(`/clients/${clientId}/agent/emergency-halt`);
 }
 
-export function getAdminEmergencyHalt(adminKey: string) {
-  return api<EmergencyHaltStatus>("/admin/emergency-halt", {
-    headers: { "X-Admin-Key": adminKey }
+export function adminSessionLogin(adminKey: string) {
+  return api<AdminSessionLogin>("/admin/session/login", {
+    method: "POST",
+    body: JSON.stringify({ admin_key: adminKey })
   });
 }
 
-export function setAdminEmergencyHalt(adminKey: string, halted: boolean, reason: string) {
+export function getAdminEmergencyHalt(adminToken: string) {
+  return api<EmergencyHaltStatus>("/admin/emergency-halt", {
+    headers: { Authorization: `Bearer ${adminToken}` }
+  });
+}
+
+export function setAdminEmergencyHalt(adminToken: string, halted: boolean, reason: string) {
   return api<EmergencyHaltStatus>("/admin/emergency-halt", {
     method: "POST",
-    headers: { "X-Admin-Key": adminKey },
+    headers: { Authorization: `Bearer ${adminToken}` },
     body: JSON.stringify({ halted, reason })
   });
 }

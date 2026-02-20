@@ -3,7 +3,7 @@ from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.auth.jwt import decode_access_token
+from backend.auth.jwt import decode_access_token, decode_admin_token
 from backend.config import get_settings
 from backend.db.models import Client
 from backend.db.session import get_db_session
@@ -32,14 +32,27 @@ def assert_client_scope(path_client_id: uuid.UUID, current_client: Client) -> No
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cross-tenant access denied")
 
 
-def require_admin_access(x_admin_key: str = Header(default="", alias="X-Admin-Key")) -> str:
+def require_admin_access(
+    authorization: str = Header(default=""),
+    x_admin_key: str = Header(default="", alias="X-Admin-Key"),
+) -> str:
+    auth_value = authorization if isinstance(authorization, str) else ""
+    if auth_value.startswith("Bearer "):
+        token = auth_value.replace("Bearer ", "", 1).strip()
+        try:
+            actor = decode_admin_token(token)
+            return actor
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid admin token") from exc
+
     settings = get_settings()
     if not settings.admin_api_key:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Admin API key is not configured",
         )
-    if x_admin_key != settings.admin_api_key:
+    header_admin_key = x_admin_key if isinstance(x_admin_key, str) else ""
+    if header_admin_key != settings.admin_api_key:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid admin key")
     return "admin"
 

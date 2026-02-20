@@ -15,6 +15,17 @@ class LoginResponse(BaseModel):
     client_id: uuid.UUID
 
 
+class AdminSessionLoginRequest(BaseModel):
+    admin_key: str
+
+
+class AdminSessionLoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_in_seconds: int
+    actor: str = "admin"
+
+
 class OnboardRequest(BaseModel):
     email: EmailStr
     password: str

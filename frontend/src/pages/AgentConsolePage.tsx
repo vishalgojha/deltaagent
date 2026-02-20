@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  adminSessionLogin,
   approveProposal,
   connectBroker,
   getAdminEmergencyHalt,
@@ -17,6 +18,7 @@ import {
   updateAgentParameters
 } from "../api/endpoints";
 import { getApiBaseUrl } from "../api/client";
+import { clearAdminSessionToken, getAdminSessionToken, saveAdminSessionToken } from "../store/adminSession";
 import type { ChatResponse, Trade } from "../types";
 import { useAgentStream } from "../hooks/useAgentStream";
 
@@ -194,7 +196,8 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
   const [reconnectNextRetryIn, setReconnectNextRetryIn] = useState<number | null>(null);
   const [reconnectStatusText, setReconnectStatusText] = useState("");
-  const [adminKey, setAdminKey] = useState("");
+  const [adminKeyInput, setAdminKeyInput] = useState("");
+  const [adminToken, setAdminToken] = useState("");
   const [killSwitchReason, setKillSwitchReason] = useState("");
   const [killSwitchConfirm, setKillSwitchConfirm] = useState("");
   const [showDebugStream, setShowDebugStream] = useState(false);
@@ -216,6 +219,10 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
   const executeModalRef = useRef<HTMLElement | null>(null);
   const executeCancelButtonRef = useRef<HTMLButtonElement | null>(null);
   const { connected, lastEvent } = useAgentStream(clientId, token);
+
+  useEffect(() => {
+    setAdminToken(getAdminSessionToken());
+  }, []);
 
   const proposalsQuery = useQuery({
     queryKey: ["proposals", clientId],
@@ -254,9 +261,9 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
   });
 
   const adminHaltQuery = useQuery({
-    queryKey: ["admin-emergency-halt-inline", adminKey],
-    queryFn: () => getAdminEmergencyHalt(adminKey),
-    enabled: adminKey.trim().length > 0,
+    queryKey: ["admin-emergency-halt-inline", adminToken],
+    queryFn: () => getAdminEmergencyHalt(adminToken),
+    enabled: adminToken.trim().length > 0,
     refetchInterval: 15000
   });
 
@@ -434,11 +441,15 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
 
   const setGlobalHaltMutation = useMutation({
     mutationFn: (payload: { halted: boolean; reason: string }) =>
-      setAdminEmergencyHalt(adminKey, payload.halted, payload.reason),
+      setAdminEmergencyHalt(adminToken, payload.halted, payload.reason),
     onSuccess: async () => {
       await adminHaltQuery.refetch();
       await readinessQuery.refetch();
     }
+  });
+
+  const adminLoginMutation = useMutation({
+    mutationFn: (adminKey: string) => adminSessionLogin(adminKey)
   });
 
   function startRun(prompt: string): string {
@@ -843,9 +854,9 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
   }
 
   async function onToggleGlobalHalt(halted: boolean) {
-    if (!adminKey.trim()) {
-      pushToast("err", "Admin key required");
-      addAuditEntry("user", "global_halt_blocked", "err", "Missing admin key");
+    if (!adminToken.trim()) {
+      pushToast("err", "Admin session required");
+      addAuditEntry("user", "global_halt_blocked", "err", "Missing admin session");
       return;
     }
     if (!killSwitchReason.trim()) {
@@ -869,6 +880,35 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
       pushToast("err", message);
       addAuditEntry("user", "global_halt_failed", "err", message);
     }
+  }
+
+  async function onAdminSessionLogin() {
+    if (!adminKeyInput.trim()) {
+      pushToast("err", "Admin key required");
+      addAuditEntry("user", "admin_session_login_failed", "err", "Missing admin key");
+      return;
+    }
+    try {
+      const result = await adminLoginMutation.mutateAsync(adminKeyInput.trim());
+      saveAdminSessionToken(result.access_token);
+      setAdminToken(result.access_token);
+      setAdminKeyInput("");
+      pushToast("ok", "Admin session unlocked");
+      addAuditEntry("user", "admin_session_login", "ok", `actor=${result.actor}`);
+      await adminHaltQuery.refetch();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Admin login failed";
+      pushToast("err", message);
+      addAuditEntry("user", "admin_session_login_failed", "err", message);
+    }
+  }
+
+  function onAdminSessionLogout() {
+    clearAdminSessionToken();
+    setAdminToken("");
+    setAdminKeyInput("");
+    pushToast("warn", "Admin session cleared");
+    addAuditEntry("user", "admin_session_logout", "warn");
   }
 
   async function copyToastLine(toast: ToastItem) {
@@ -1178,11 +1218,29 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
                 data-testid="kill-switch-admin-key"
                 style={{ marginLeft: 8, minWidth: 220 }}
                 type="password"
-                value={adminKey}
-                onChange={(event) => setAdminKey(event.target.value)}
-                placeholder="X-Admin-Key"
+                value={adminKeyInput}
+                onChange={(event) => setAdminKeyInput(event.target.value)}
+                placeholder="Enter once to unlock"
               />
             </label>
+            <button
+              type="button"
+              className="secondary"
+              data-testid="kill-switch-admin-login"
+              onClick={() => void onAdminSessionLogin()}
+              disabled={adminLoginMutation.isPending}
+            >
+              {adminLoginMutation.isPending ? "Unlocking..." : "Unlock Admin"}
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              data-testid="kill-switch-admin-logout"
+              onClick={onAdminSessionLogout}
+              disabled={!adminToken}
+            >
+              Lock Admin
+            </button>
             <label>
               Reason
               <input
@@ -1223,7 +1281,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
             >
               {setGlobalHaltMutation.isPending ? "Applying..." : "Resume Trading"}
             </button>
-            {adminKey.trim() && (
+            {adminToken.trim() && (
               <span className="muted" style={{ fontFamily: "var(--font-mono)" }}>
                 admin halt:{" "}
                 {adminHaltQuery.isLoading

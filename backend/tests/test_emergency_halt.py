@@ -2,6 +2,8 @@ import uuid
 from types import SimpleNamespace
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -11,7 +13,7 @@ from backend.agent.memory import AgentMemoryStore
 from backend.agent.risk import RiskGovernor
 from backend.api.deps import require_admin_access
 from backend.api.admin import set_emergency_halt
-from backend.auth.jwt import hash_password
+from backend.auth.jwt import create_admin_token, hash_password
 from backend.brokers.mock import MockBroker
 from backend.config import get_settings
 from backend.db.models import AuditLog, Base, Client, Proposal
@@ -25,10 +27,31 @@ def test_admin_key_required_for_emergency_halt_access() -> None:
     settings.admin_api_key = "expected-admin-key"
     try:
         with pytest.raises(HTTPException) as exc:
-            require_admin_access("wrong-key")
+            require_admin_access(x_admin_key="wrong-key")
         assert exc.value.status_code == 401
 
-        assert require_admin_access("expected-admin-key") == "admin"
+        assert require_admin_access(x_admin_key="expected-admin-key") == "admin"
+        assert require_admin_access(authorization=f"Bearer {create_admin_token('admin')}") == "admin"
+    finally:
+        settings.admin_api_key = previous
+
+
+def test_admin_session_login_returns_bearer_token() -> None:
+    settings = get_settings()
+    previous = settings.admin_api_key
+    settings.admin_api_key = "expected-admin-key"
+    try:
+        app = FastAPI()
+        from backend.api import admin as admin_api
+
+        app.include_router(admin_api.router)
+        with TestClient(app) as client:
+            response = client.post("/admin/session/login", json={"admin_key": "expected-admin-key"})
+            assert response.status_code == 200
+            body = response.json()
+            assert body["token_type"] == "bearer"
+            assert isinstance(body["access_token"], str)
+            assert len(body["access_token"]) > 20
     finally:
         settings.admin_api_key = previous
 

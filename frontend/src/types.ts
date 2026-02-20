@@ -47,6 +47,13 @@ export type EmergencyHaltStatus = {
   updated_by: string;
 };
 
+export type AdminSessionLogin = {
+  access_token: string;
+  token_type: string;
+  expires_in_seconds: number;
+  actor: string;
+};
+
 export type ChatToolCall = {
   tool_use_id?: string;
   name?: string;

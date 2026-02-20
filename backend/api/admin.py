@@ -1,14 +1,33 @@
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.deps import set_admin_db_context
+from backend.auth.jwt import create_admin_token
+from backend.config import get_settings
 from backend.db.models import AuditLog, Client
 from backend.db.session import get_db_session
-from backend.schemas import EmergencyHaltRequest, EmergencyHaltResponse
+from backend.schemas import AdminSessionLoginRequest, AdminSessionLoginResponse, EmergencyHaltRequest, EmergencyHaltResponse
 
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+settings = get_settings()
+
+
+@router.post("/session/login", response_model=AdminSessionLoginResponse)
+async def admin_session_login(payload: AdminSessionLoginRequest) -> AdminSessionLoginResponse:
+    if not settings.admin_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Admin API key is not configured",
+        )
+    if payload.admin_key != settings.admin_api_key:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid admin key")
+    return AdminSessionLoginResponse(
+        access_token=create_admin_token("admin"),
+        expires_in_seconds=settings.jwt_expire_minutes * 60,
+        actor="admin",
+    )
 
 
 @router.get("/emergency-halt", response_model=EmergencyHaltResponse)
