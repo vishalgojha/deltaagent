@@ -57,6 +57,15 @@ a:hover {
   color: #bae6fd;
 }
 
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid rgba(0, 212, 170, 0.85);
+  outline-offset: 2px;
+}
+
 h1,
 h2,
 h3,
@@ -214,6 +223,8 @@ pre {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .shell-pill {
@@ -303,6 +314,7 @@ pre {
   font-size: 18px;
   color: var(--text);
   overflow-wrap: anywhere;
+  line-height: 1.25;
 }
 
 .console-statebar {
@@ -1087,6 +1099,16 @@ textarea {
     padding: 14px;
   }
 
+  .shell-topbar {
+    min-height: 54px;
+    height: auto;
+    padding-top: 8px;
+    padding-bottom: 8px;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
   .auth-shell {
     grid-template-columns: 1fr;
   }
@@ -1116,5 +1138,25 @@ textarea {
 
   .agent-stage-row {
     grid-template-columns: 1fr;
+  }
+
+  .shell-topbar-right {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .shell-pill {
+    min-height: 24px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

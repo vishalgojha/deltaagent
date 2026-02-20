@@ -9,6 +9,21 @@ Last updated: 2026-02-20
 - CI baseline: use latest commit below and verify checks on GitHub Actions
 
 ## 2) What Was Just Completed
+### Frontend visual + UX polish pass
+- Scoped visual reskin applied across:
+  - `DashboardPage`
+  - `BrokerSettingsPage`
+  - `StrategyTemplatesPage`
+  - `AdminSafetyPage`
+  - `OnboardingPage`
+  - `LoginPage`
+- Added accessibility and UX hardening:
+  - visible keyboard focus rings (`:focus-visible`)
+  - reduced-motion safety (`prefers-reduced-motion`)
+  - better mobile topbar wrapping/readability
+- TypeScript compile check passed:
+  - `cd frontend && npx tsc -b`
+
 ### Operator docs sync
 - Updated emergency halt runbook for admin bearer session flow
 - Added admin session operations runbook:
@@ -157,6 +172,7 @@ npx tsc -b
 ## 7) Pending (Product)
 1. Capture and publish screenshots/GIF
 - Run `capture_screenshots.bat` from repo root and commit generated images from `docs/screenshots/`.
+- Note: in restricted environments this may fail with `spawn EPERM`; run locally in your normal terminal session.
 
 ## 8) Important Files
 - Primary handoff: `00_HANDOFF.md`
