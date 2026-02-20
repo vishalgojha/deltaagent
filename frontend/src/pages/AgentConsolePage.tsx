@@ -1128,7 +1128,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
   }, [showExecuteModal, executeBlockedByGuard, approveMutation.isPending, executionPhase, selectedProposalId]);
 
   return (
-    <div className="grid">
+    <div className="grid agent-console-page">
       {toasts.length > 0 && (
         <div className="toast-stack" aria-live="polite">
           {toasts.map((toast) => (

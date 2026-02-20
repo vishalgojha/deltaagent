@@ -540,6 +540,118 @@ pre {
   background: rgba(2, 6, 23, 0.45);
 }
 
+.agent-console-page {
+  gap: 10px;
+}
+
+.agent-console-page .card {
+  border-radius: 8px;
+}
+
+.agent-console-page .section-head h3 {
+  font-size: 15px;
+  letter-spacing: 0.01em;
+}
+
+.agent-console-page .policy-grid {
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+}
+
+.agent-console-page .policy-chip {
+  background: rgba(9, 13, 19, 0.82);
+  border-color: rgba(91, 105, 130, 0.42);
+}
+
+.agent-console-page .policy-chip .metric-value {
+  font-size: 16px;
+}
+
+.agent-console-page .row > label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.agent-console-page .row > label input,
+.agent-console-page .row > label select {
+  margin-left: 0 !important;
+}
+
+.agent-console-page .assistant-chat {
+  max-height: 340px;
+  background: linear-gradient(180deg, rgba(11, 16, 23, 0.9), rgba(11, 14, 21, 0.75));
+  border-color: rgba(91, 105, 130, 0.46);
+}
+
+.agent-console-page .assistant-bubble {
+  border-radius: 7px;
+  border-color: rgba(91, 105, 130, 0.38);
+  background: rgba(17, 22, 31, 0.9);
+}
+
+.agent-console-page .assistant-bubble.user {
+  border-color: rgba(74, 144, 217, 0.45);
+  background: rgba(30, 44, 66, 0.58);
+}
+
+.agent-console-page .assistant-bubble.assistant {
+  border-color: rgba(0, 212, 170, 0.42);
+  background: rgba(10, 38, 35, 0.4);
+}
+
+.agent-console-page .assistant-bubble.proposal {
+  border-color: rgba(245, 158, 11, 0.45);
+  background: rgba(56, 33, 8, 0.42);
+}
+
+.agent-console-page .assistant-role {
+  color: #7b90af;
+}
+
+.agent-console-page .proposal-quick-card {
+  background: linear-gradient(180deg, rgba(10, 14, 21, 0.92), rgba(10, 14, 21, 0.75));
+  border-color: rgba(0, 212, 170, 0.25);
+}
+
+.agent-console-page .proposal-quick-card p {
+  overflow-wrap: anywhere;
+}
+
+.agent-console-page .lifecycle-chip {
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.agent-console-page .audit-row {
+  background: rgba(9, 13, 19, 0.84);
+  border-color: rgba(91, 105, 130, 0.42);
+}
+
+.agent-console-page .agent-flow {
+  border-color: rgba(91, 105, 130, 0.42);
+  background: rgba(9, 14, 21, 0.78);
+}
+
+.agent-console-page .tool-step-card {
+  background: rgba(9, 13, 19, 0.76);
+  border-color: rgba(91, 105, 130, 0.4);
+}
+
+.agent-console-page .tool-step-toggle {
+  min-height: 26px;
+}
+
+.agent-console-page .read-only-overlay {
+  background: rgba(7, 9, 13, 0.75);
+}
+
+.agent-console-page .modal-card {
+  border-radius: 8px;
+  background: rgba(14, 19, 27, 0.96);
+}
+
 .read-only-card {
   position: relative;
 }
