@@ -69,7 +69,7 @@ export function AdminSafetyPage() {
   }
 
   return (
-    <div className="grid">
+    <div className="grid admin-safety-page">
       <section className="card">
         <h3>Admin Safety Controls</h3>
         <p className="muted">Unlock admin session, then toggle global emergency trading halt.</p>

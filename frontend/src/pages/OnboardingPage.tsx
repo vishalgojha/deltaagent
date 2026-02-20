@@ -216,7 +216,7 @@ export function OnboardingPage() {
   }
 
   return (
-    <div className="auth-shell">
+    <div className="auth-shell onboarding-page">
       <section className="auth-hero">
         <span className="auth-chip">ONBOARD CLIENT</span>
         <h1 className="auth-title">Launch A New Trading Tenant</h1>

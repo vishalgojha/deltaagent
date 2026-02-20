@@ -257,7 +257,7 @@ export function StrategyTemplatesPage({ isHalted = false, haltReason = "" }: Pro
   }
 
   return (
-    <div className="grid">
+    <div className="grid strategy-templates-page">
       <section className="card">
         <div className="section-head">
           <div>

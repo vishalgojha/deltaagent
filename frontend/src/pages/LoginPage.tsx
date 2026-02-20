@@ -27,7 +27,7 @@ export function LoginPage() {
   }
 
   return (
-    <div className="auth-shell">
+    <div className="auth-shell login-page">
       <section className="auth-hero">
         <span className="auth-chip">FUTURES OPTIONS</span>
         <h1 className="auth-title">Delta Neutral Trading Agent</h1>

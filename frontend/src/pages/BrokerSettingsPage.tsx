@@ -88,7 +88,7 @@ export function BrokerSettingsPage({ clientId }: Props) {
   }
 
   return (
-    <div className="grid">
+    <div className="grid broker-settings-page">
       <section className="card">
         <div className="section-head">
           <div>

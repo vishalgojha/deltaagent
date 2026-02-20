@@ -652,6 +652,99 @@ pre {
   background: rgba(14, 19, 27, 0.96);
 }
 
+.dashboard-page .metric-card,
+.broker-settings-page .metric-card,
+.strategy-templates-page .metric-card {
+  background: linear-gradient(180deg, rgba(10, 15, 22, 0.88), rgba(10, 15, 22, 0.68));
+  border-color: rgba(91, 105, 130, 0.46);
+}
+
+.dashboard-page .card,
+.broker-settings-page .card,
+.strategy-templates-page .card,
+.admin-safety-page .card {
+  border-radius: 8px;
+  background: rgba(13, 18, 27, 0.9);
+  border-color: rgba(91, 105, 130, 0.44);
+}
+
+.dashboard-page table,
+.broker-settings-page table,
+.strategy-templates-page table {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(7, 10, 16, 0.44);
+}
+
+.dashboard-page tr:hover td,
+.broker-settings-page tr:hover td,
+.strategy-templates-page tr:hover td {
+  background: rgba(20, 28, 42, 0.6);
+}
+
+.dashboard-page .field-error,
+.broker-settings-page .field-error,
+.strategy-templates-page .field-error {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.broker-settings-page .preflight-check,
+.strategy-templates-page .preflight-check {
+  background: rgba(10, 16, 25, 0.72);
+  border-color: rgba(91, 105, 130, 0.52);
+}
+
+.strategy-templates-page .strategy-preview {
+  border: 1px solid rgba(91, 105, 130, 0.42);
+  border-radius: 8px;
+  padding: 10px;
+  background: rgba(7, 11, 17, 0.58);
+}
+
+.admin-safety-page .card:first-child {
+  border-color: rgba(239, 68, 68, 0.42);
+  background: linear-gradient(180deg, rgba(34, 11, 15, 0.55), rgba(13, 18, 27, 0.92));
+}
+
+.admin-safety-page button:not(.secondary) {
+  background: linear-gradient(135deg, #129b70, #00d4aa);
+  color: #031611;
+}
+
+.admin-safety-page .row button:first-child {
+  background: linear-gradient(135deg, #a61b1b, #ff4444);
+  color: #ffecec;
+}
+
+.login-page .auth-chip {
+  background: rgba(0, 212, 170, 0.16);
+  border-color: rgba(0, 212, 170, 0.45);
+  color: #7cfce0;
+}
+
+.login-page .auth-card {
+  border-radius: 10px;
+  border-color: rgba(0, 212, 170, 0.3);
+  background: linear-gradient(180deg, rgba(11, 15, 22, 0.96), rgba(11, 15, 22, 0.82));
+}
+
+.onboarding-page .card {
+  border-radius: 10px;
+  border-color: rgba(74, 144, 217, 0.32);
+  background: linear-gradient(180deg, rgba(11, 15, 23, 0.95), rgba(11, 15, 23, 0.8));
+}
+
+.onboarding-page .auth-chip {
+  background: rgba(74, 144, 217, 0.16);
+  border-color: rgba(74, 144, 217, 0.48);
+  color: #9ecbff;
+}
+
+.onboarding-page .row label {
+  color: var(--text-muted);
+}
+
 .read-only-card {
   position: relative;
 }

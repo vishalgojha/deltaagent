@@ -91,7 +91,7 @@ export function DashboardPage({ clientId }: Props) {
   }
 
   return (
-    <div className="grid">
+    <div className="grid dashboard-page">
       <section className="card">
         <div className="section-head">
           <div>
