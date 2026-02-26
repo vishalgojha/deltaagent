@@ -26,7 +26,9 @@ vi.mock("../api/endpoints", async () => {
 describe("AgentConsolePage", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    localStorage.clear();
+    if (typeof localStorage?.clear === "function") {
+      localStorage.clear();
+    }
     vi.mocked(useAgentStream).mockReturnValue({ connected: true, lastEvent: null });
     vi.mocked(endpoints.getStatus).mockResolvedValue({
       client_id: "client-1",
@@ -152,13 +154,11 @@ describe("AgentConsolePage", () => {
       expect(vi.mocked(endpoints.approveProposal)).toHaveBeenCalledWith("client-1", 303);
     });
     await waitFor(() => {
-      expect(
-        screen.getByText((_, node) => {
-          const text = node?.textContent ?? "";
-          return /Order:\s*OID-303/.test(text) || /Order\s+OID-303/.test(text);
-        })
-      ).toBeInTheDocument();
-      expect(screen.getByText(/Status:\s*filled/i)).toBeInTheDocument();
+      const matches = screen.getAllByText((_, node) => {
+        const text = node?.textContent ?? "";
+        return /status=filled/i.test(text) && (/id=OID-303/i.test(text) || /order_id=OID-303/i.test(text));
+      });
+      expect(matches.length).toBeGreaterThan(0);
     });
   }, 10000);
 

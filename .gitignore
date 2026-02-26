@@ -5,6 +5,7 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .venv/
+.venv311/
 venv/
 
 # Environment and local config
@@ -25,4 +26,5 @@ frontend/*.tsbuildinfo
 *.log
 *.tmp
 *.swp
+.tmp/
 pytest-cache-files-*/

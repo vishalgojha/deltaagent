@@ -12,6 +12,8 @@ vi.mock("../api/endpoints", async () => {
     getStatus: vi.fn(),
     getPositions: vi.fn(),
     getTrades: vi.fn(),
+    getTradeFills: vi.fn(),
+    getExecutionQuality: vi.fn(),
     getRiskParameters: vi.fn(),
     updateRiskParameters: vi.fn()
   };
@@ -27,13 +29,32 @@ function mockDashboardLoad() {
   });
   vi.mocked(endpoints.getPositions).mockResolvedValue([]);
   vi.mocked(endpoints.getTrades).mockResolvedValue([]);
+  vi.mocked(endpoints.getTradeFills).mockResolvedValue([]);
+  vi.mocked(endpoints.getExecutionQuality).mockResolvedValue({
+    client_id: "client-1",
+    window_start: null,
+    window_end: null,
+    trades_total: 0,
+    trades_with_fills: 0,
+    fill_events: 0,
+    avg_slippage_bps: null,
+    median_slippage_bps: null,
+    avg_first_fill_latency_ms: null,
+    generated_at: new Date().toISOString()
+  });
   vi.mocked(endpoints.getRiskParameters).mockResolvedValue({
     client_id: "client-1",
     risk_parameters: {
       delta_threshold: 0.2,
       max_size: 10,
       max_loss: 5000,
-      max_open_positions: 20
+      max_open_positions: 20,
+      execution_alert_slippage_warn_bps: 15,
+      execution_alert_slippage_critical_bps: 30,
+      execution_alert_latency_warn_ms: 3000,
+      execution_alert_latency_critical_ms: 8000,
+      execution_alert_fill_coverage_warn_pct: 75,
+      execution_alert_fill_coverage_critical_pct: 50
     }
   });
 }
@@ -55,6 +76,8 @@ describe("DashboardPage Risk Controls", () => {
     expect(screen.getByLabelText("Max Size")).toHaveValue("5");
     expect(screen.getByLabelText("Max Loss")).toHaveValue("2500");
     expect(screen.getByLabelText("Max Open Positions")).toHaveValue("10");
+    expect(screen.getByLabelText("Slippage Warning (bps)")).toHaveValue("10");
+    expect(screen.getByLabelText("Fill Coverage Critical (%)")).toHaveValue("70");
   });
 
   it("shows validation errors and blocks submit", async () => {
@@ -78,7 +101,13 @@ describe("DashboardPage Risk Controls", () => {
         delta_threshold: 0.35,
         max_size: 15,
         max_loss: 8000,
-        max_open_positions: 25
+        max_open_positions: 25,
+        execution_alert_slippage_warn_bps: 15,
+        execution_alert_slippage_critical_bps: 30,
+        execution_alert_latency_warn_ms: 3000,
+        execution_alert_latency_critical_ms: 8000,
+        execution_alert_fill_coverage_warn_pct: 75,
+        execution_alert_fill_coverage_critical_pct: 50
       }
     });
 
@@ -100,7 +129,13 @@ describe("DashboardPage Risk Controls", () => {
         delta_threshold: 0.35,
         max_size: 15,
         max_loss: 8000,
-        max_open_positions: 25
+        max_open_positions: 25,
+        execution_alert_slippage_warn_bps: 15,
+        execution_alert_slippage_critical_bps: 30,
+        execution_alert_latency_warn_ms: 3000,
+        execution_alert_latency_critical_ms: 8000,
+        execution_alert_fill_coverage_warn_pct: 75,
+        execution_alert_fill_coverage_critical_pct: 50
       })
     );
     expect(await screen.findByText("Risk controls updated")).toBeInTheDocument();
@@ -115,5 +150,61 @@ describe("DashboardPage Risk Controls", () => {
     await user.click(screen.getByRole("button", { name: "Save Risk Controls" }));
 
     expect(await screen.findByText("backend unavailable")).toBeInTheDocument();
+  });
+
+  it("renders execution alerts when metrics breach thresholds", async () => {
+    vi.mocked(endpoints.getExecutionQuality).mockResolvedValue({
+      client_id: "client-1",
+      window_start: null,
+      window_end: null,
+      trades_total: 10,
+      trades_with_fills: 4,
+      fill_events: 4,
+      avg_slippage_bps: 36.5,
+      median_slippage_bps: 20.2,
+      avg_first_fill_latency_ms: 9100,
+      generated_at: new Date().toISOString()
+    });
+
+    renderWithProviders(<DashboardPage clientId="client-1" />);
+
+    expect(await screen.findByRole("heading", { name: "Execution Alerts" })).toBeInTheDocument();
+    expect(await screen.findByText(/Avg slippage/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Avg first-fill latency/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Fill coverage .* is below .* target\./i)).toBeInTheDocument();
+  });
+
+  it("uses client-configured alert thresholds", async () => {
+    vi.mocked(endpoints.getRiskParameters).mockResolvedValue({
+      client_id: "client-1",
+      risk_parameters: {
+        delta_threshold: 0.2,
+        max_size: 10,
+        max_loss: 5000,
+        max_open_positions: 20,
+        execution_alert_slippage_warn_bps: 40,
+        execution_alert_slippage_critical_bps: 60,
+        execution_alert_latency_warn_ms: 10000,
+        execution_alert_latency_critical_ms: 20000,
+        execution_alert_fill_coverage_warn_pct: 50,
+        execution_alert_fill_coverage_critical_pct: 25
+      }
+    });
+    vi.mocked(endpoints.getExecutionQuality).mockResolvedValue({
+      client_id: "client-1",
+      window_start: null,
+      window_end: null,
+      trades_total: 10,
+      trades_with_fills: 8,
+      fill_events: 8,
+      avg_slippage_bps: 30,
+      median_slippage_bps: 20,
+      avg_first_fill_latency_ms: 9000,
+      generated_at: new Date().toISOString()
+    });
+
+    renderWithProviders(<DashboardPage clientId="client-1" />);
+    expect(await screen.findByRole("heading", { name: "Execution Alerts" })).toBeInTheDocument();
+    expect(await screen.findByText(/No active execution alerts/i)).toBeInTheDocument();
   });
 });
