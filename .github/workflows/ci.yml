@@ -129,7 +129,7 @@ jobs:
       ADMIN_API_KEY: ci-admin-key
       AUTO_CREATE_TABLES: "false"
       USE_MOCK_BROKER: "true"
-      CORS_ORIGINS: http://localhost:5173
+      CORS_ORIGINS: '["http://localhost:5173"]'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
