@@ -6,8 +6,11 @@ from typing import Any
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.agent.risk import RiskGovernor
 from backend.brokers.base import BrokerBase, BrokerOrderError
 from backend.db.models import AuditLog, Client, Position, StrategyExecution, StrategyTemplate, Trade
+from backend.execution.fills import build_trade_fill_from_order, estimate_expected_price
+from backend.safety.emergency_halt import EmergencyHaltController
 from backend.schemas import StrategyTemplateCreateRequest, StrategyTemplateUpdateRequest
 
 
@@ -300,7 +303,9 @@ class StrategyTemplateService:
         client_id: uuid.UUID,
         template_id: int,
         broker: BrokerBase,
+        emergency_halt: EmergencyHaltController | None = None,
     ) -> StrategyExecution:
+        await self._enforce_execution_controls(client_id, emergency_halt)
         resolved = await self.resolve_strategy_template(client_id, template_id, broker)
         template = await self.get_template(client_id, template_id)
         client = await self.db.get(Client, client_id)
@@ -331,6 +336,7 @@ class StrategyTemplateService:
             execution_timestamp=datetime.now(UTC),
         )
         self.db.add(execution)
+        execution_pnl = self._safe_float(combo_result.get("realized_pnl", combo_result.get("pnl", 0.0)))
 
         trade = Trade(
             client_id=client_id,
@@ -343,9 +349,30 @@ class StrategyTemplateService:
             agent_reasoning=f"Strategy template execution: {template.name}",
             mode=client.mode,
             status=execution.status,
-            pnl=0.0,
+            pnl=execution_pnl,
         )
         self.db.add(trade)
+        await self.db.flush()
+
+        expected_price = estimate_expected_price(
+            trade.action,
+            bid=0.0,
+            ask=0.0,
+            limit_price=resolved.estimated_net_premium,
+            fallback_price=combo_result.get("expected_price"),
+        )
+        fill = build_trade_fill_from_order(
+            client_id=client_id,
+            trade_id=trade.id,
+            order_id=trade.order_id,
+            action=trade.action,
+            qty=trade.qty,
+            order_payload=combo_result,
+            expected_price=expected_price,
+        )
+        if fill is not None:
+            self.db.add(fill)
+
         await self.db.commit()
         await self.db.refresh(execution)
 
@@ -367,6 +394,9 @@ class StrategyTemplateService:
         template: StrategyTemplate,
         resolved_contracts: int,
     ) -> None:
+        if not RiskGovernor._is_market_hours(datetime.now(UTC).time()):
+            raise ValueError("Order attempted outside configured market hours")
+
         risk_params = client.risk_params or {}
         max_daily_loss = float(risk_params.get("max_loss", 5000))
         max_open_positions = int(risk_params.get("max_open_positions", 20))
@@ -383,6 +413,9 @@ class StrategyTemplateService:
         day_pnl = sum(float(t.pnl) for t in day_trades)
         if day_pnl <= -abs(max_daily_loss):
             raise ValueError(f"Daily loss limit breached: {day_pnl:.2f} <= -{max_daily_loss:.2f}")
+        consecutive_losses = [float(t.pnl) for t in day_trades[:3]]
+        if len(consecutive_losses) >= 3 and all(loss <= -500 for loss in consecutive_losses):
+            raise ValueError("Circuit breaker active: 3 consecutive losses > $500")
 
         pos_result = await self.db.execute(select(Position).where(Position.client_id == client.id))
         open_legs = len(list(pos_result.scalars().all()))
@@ -393,6 +426,23 @@ class StrategyTemplateService:
             raise ValueError(f"Resolved contracts {resolved_contracts} exceed template max {template.max_contracts}")
         if resolved_contracts > max_size:
             raise ValueError(f"Resolved contracts {resolved_contracts} exceed client max_size {max_size}")
+
+    async def _enforce_execution_controls(
+        self,
+        client_id: uuid.UUID,
+        emergency_halt: EmergencyHaltController | None,
+    ) -> None:
+        if emergency_halt is None:
+            return
+        state = await emergency_halt.get()
+        if not state.halted:
+            return
+        await self._audit(
+            client_id,
+            "emergency_halt_blocked",
+            {"reason": state.reason, "operation": "strategy_template_execute"},
+        )
+        raise ValueError("Trading is globally halted by emergency control")
 
     async def _audit(self, client_id: uuid.UUID, event_type: str, details: dict[str, Any]) -> None:
         self.db.add(AuditLog(client_id=client_id, event_type=event_type, details=details))

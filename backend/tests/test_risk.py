@@ -16,6 +16,7 @@ def test_risk_allows_valid_order() -> None:
         net_delta=0.1,
         projected_delta=0.15,
         daily_pnl=0.0,
+        recent_trade_pnls=None,
         open_legs=1,
         bid=10.0,
         ask=10.2,
@@ -33,6 +34,7 @@ def test_risk_blocks_size() -> None:
             net_delta=0.0,
             projected_delta=0.1,
             daily_pnl=0.0,
+            recent_trade_pnls=None,
             open_legs=1,
             bid=10.0,
             ask=10.2,
@@ -41,12 +43,9 @@ def test_risk_blocks_size() -> None:
     assert exc.value.rule == "MAX_SINGLE_ORDER_SIZE"
 
 
-def test_risk_circuit_breaker() -> None:
+def test_risk_circuit_breaker_from_recent_trade_pnls() -> None:
     gov = RiskGovernor()
     gov._is_market_hours = lambda _: True  # type: ignore[attr-defined]
-    gov.register_trade_pnl("c1", -700)
-    gov.register_trade_pnl("c1", -650)
-    gov.register_trade_pnl("c1", -800)
     with pytest.raises(RiskViolation) as exc:
         gov.validate_order(
             client_id="c1",
@@ -54,6 +53,7 @@ def test_risk_circuit_breaker() -> None:
             net_delta=0.0,
             projected_delta=0.1,
             daily_pnl=0.0,
+            recent_trade_pnls=[-700.0, -650.0, -800.0],
             open_legs=1,
             bid=10.0,
             ask=10.2,

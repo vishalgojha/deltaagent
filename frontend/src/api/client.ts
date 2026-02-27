@@ -24,7 +24,7 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   return response.json() as Promise<T>;
 }
 
-export function wsUrl(clientId: string, token: string): string {
+export function wsUrl(clientId: string): string {
   const raw = import.meta.env.VITE_WS_BASE_URL ?? "ws://localhost:8000";
-  return `${raw}/clients/${clientId}/stream?token=${encodeURIComponent(token)}`;
+  return `${raw}/clients/${clientId}/stream`;
 }

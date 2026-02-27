@@ -9,7 +9,7 @@ from backend.agent.risk import RiskGovernor, RiskViolation
 from backend.auth.jwt import hash_password
 from backend.brokers.mock import MockBroker
 from backend.config import get_settings
-from backend.db.models import Base, Client, Instrument, Proposal, Trade
+from backend.db.models import Base, Client, Instrument, Proposal, Trade, TradeFill
 
 
 class _FakeRedis:
@@ -188,6 +188,8 @@ async def test_approve_executes_trade() -> None:
         assert execution["order"]["status"] == "filled"
         trades = await db.execute(Trade.__table__.select())
         assert trades.first() is not None
+        fills = await db.execute(TradeFill.__table__.select())
+        assert fills.first() is not None
 
 
 @pytest.mark.asyncio

@@ -117,6 +117,37 @@ export type Trade = {
   pnl: number;
 };
 
+export type TradeFill = {
+  id: number;
+  trade_id: number;
+  order_id: string | null;
+  broker_fill_id: string | null;
+  ingest_idempotency_key: string | null;
+  status: string;
+  qty: number;
+  fill_price: number;
+  expected_price: number | null;
+  slippage_bps: number | null;
+  fees: number;
+  realized_pnl: number | null;
+  fill_timestamp: string;
+  raw_payload: Record<string, unknown>;
+  created_at: string;
+};
+
+export type ExecutionQuality = {
+  client_id: string;
+  window_start: string | null;
+  window_end: string | null;
+  trades_total: number;
+  trades_with_fills: number;
+  fill_events: number;
+  avg_slippage_bps: number | null;
+  median_slippage_bps: number | null;
+  avg_first_fill_latency_ms: number | null;
+  generated_at: string;
+};
+
 export type Proposal = {
   id: number;
   timestamp: string;

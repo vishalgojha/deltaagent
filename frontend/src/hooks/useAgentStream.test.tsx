@@ -2,10 +2,10 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useAgentStream } from "./useAgentStream";
 
-const wsUrlMock = vi.fn(() => "ws://localhost:8000/clients/client-1/stream?token=token-1");
+const wsUrlMock = vi.fn(() => "ws://localhost:8000/clients/client-1/stream");
 
 vi.mock("../api/client", () => ({
-  wsUrl: (...args: [string, string]) => wsUrlMock(...args)
+  wsUrl: (...args: [string]) => wsUrlMock(...args)
 }));
 
 class FakeWebSocket {
@@ -15,6 +15,7 @@ class FakeWebSocket {
   onerror: (() => void) | null = null;
   onmessage: ((event: { data: string }) => void) | null = null;
   closed = false;
+  sentPayloads: string[] = [];
 
   constructor(public readonly url: string) {
     FakeWebSocket.lastInstance = this;
@@ -22,6 +23,10 @@ class FakeWebSocket {
 
   close() {
     this.closed = true;
+  }
+
+  send(payload: string) {
+    this.sentPayloads.push(payload);
   }
 }
 
@@ -45,7 +50,7 @@ describe("useAgentStream", () => {
     vi.stubGlobal("WebSocket", FakeWebSocket as unknown as typeof WebSocket);
     render(<StreamProbe clientId="client-1" token="token-1" />);
 
-    expect(wsUrlMock).toHaveBeenCalledWith("client-1", "token-1");
+    expect(wsUrlMock).toHaveBeenCalledWith("client-1");
     const instance = FakeWebSocket.lastInstance;
     expect(instance).toBeTruthy();
 
@@ -53,6 +58,7 @@ describe("useAgentStream", () => {
       instance?.onopen?.();
     });
     await waitFor(() => expect(screen.getByTestId("connected")).toHaveTextContent("true"));
+    expect(instance?.sentPayloads[0]).toContain('"token":"token-1"');
 
     act(() => {
       instance?.onmessage?.({ data: '{"event":"proposal_created"}' });

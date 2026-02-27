@@ -23,15 +23,19 @@ async def lifespan(app: FastAPI):
     if settings.auto_create_tables:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-    app.state.emergency_halt = EmergencyHaltController()
-    app.state.agent_manager = AgentManager(emergency_halt=app.state.emergency_halt)
     try:
         app.state.redis = redis_from_url(settings.redis_url, decode_responses=True)
         await app.state.redis.ping()
     except Exception:  # noqa: BLE001
         app.state.redis = None
+    app.state.emergency_halt = EmergencyHaltController(redis_client=app.state.redis)
+    app.state.agent_manager = AgentManager(
+        emergency_halt=app.state.emergency_halt,
+        redis_client=app.state.redis,
+    )
     app.state.db_sessionmaker = SessionLocal
     yield
+    await app.state.agent_manager.shutdown()
     if app.state.redis is not None:
         await app.state.redis.close()
 

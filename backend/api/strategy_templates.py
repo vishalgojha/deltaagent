@@ -126,7 +126,12 @@ async def execute_template(
     manager = request.app.state.agent_manager
     try:
         agent = await manager.get_agent(current_client.id, current_client.broker_type, creds, db)
-        execution = await service.execute_strategy_template(current_client.id, template_id, agent.broker)
+        execution = await service.execute_strategy_template(
+            current_client.id,
+            template_id,
+            agent.broker,
+            emergency_halt=getattr(request.app.state, "emergency_halt", None),
+        )
     except BrokerError as exc:
         raise broker_http_exception(exc, operation="execute", broker=current_client.broker_type) from exc
     except ValueError as exc:

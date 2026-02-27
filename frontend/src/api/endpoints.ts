@@ -7,13 +7,15 @@ import type {
   ChatResponse,
   ClientOut,
   EmergencyHaltStatus,
+  ExecutionQuality,
   LoginResponse,
   Position,
   Proposal,
   StrategyExecution,
   StrategyPreview,
   StrategyTemplate,
-  Trade
+  Trade,
+  TradeFill
 } from "../types";
 import type { RiskParameters } from "../features/riskControls";
 
@@ -99,6 +101,49 @@ export function getPositions(clientId: string) {
 
 export function getTrades(clientId: string) {
   return api<Trade[]>(`/clients/${clientId}/trades`);
+}
+
+export function getTradeFills(clientId: string, tradeId: number) {
+  return api<TradeFill[]>(`/clients/${clientId}/trades/${tradeId}/fills`);
+}
+
+export function ingestTradeFill(
+  clientId: string,
+  tradeId: number,
+  payload: {
+    status: string;
+    qty: number;
+    fill_price: number;
+    expected_price?: number;
+    fees?: number;
+    realized_pnl?: number;
+    fill_timestamp?: string;
+    broker_fill_id?: string;
+    idempotency_key?: string;
+    raw_payload?: Record<string, unknown>;
+  },
+  options?: { idempotencyKey?: string }
+) {
+  const headers: Record<string, string> = {};
+  if (options?.idempotencyKey) {
+    headers["Idempotency-Key"] = options.idempotencyKey;
+  }
+  return api<TradeFill>(`/clients/${clientId}/trades/${tradeId}/fills`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload)
+  });
+}
+
+export function getExecutionQuality(clientId: string, from?: string, to?: string) {
+  const params = new URLSearchParams();
+  if (from) params.set("from", from);
+  if (to) params.set("to", to);
+  const qs = params.toString();
+  const path = qs
+    ? `/clients/${clientId}/metrics/execution-quality?${qs}`
+    : `/clients/${clientId}/metrics/execution-quality`;
+  return api<ExecutionQuality>(path);
 }
 
 export function getProposals(clientId: string) {

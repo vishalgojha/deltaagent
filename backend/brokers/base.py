@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 
@@ -39,11 +39,19 @@ class BrokerOrderResult:
     order_id: str
     status: str
     fill_price: float | None = None
+    broker_fill_id: str | None = None
+    expected_price: float | None = None
+    fees: float = 0.0
+    realized_pnl: float | None = None
+    raw_payload: dict[str, Any] = field(default_factory=dict)
 
 
 class BrokerBase(ABC):
     @abstractmethod
     async def connect(self) -> None: ...
+
+    @abstractmethod
+    async def disconnect(self) -> None: ...
 
     @abstractmethod
     async def get_positions(self) -> list[dict[str, Any]]: ...

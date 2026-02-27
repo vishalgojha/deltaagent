@@ -11,6 +11,7 @@ from backend.brokers.base import BrokerError
 from backend.config import get_settings
 from backend.db.models import Client, Proposal
 from backend.db.session import get_db_session
+from backend.risk_defaults import merge_risk_parameters
 from backend.schemas import (
     AgentReadinessOut,
     AgentStatusOut,
@@ -84,7 +85,7 @@ async def get_parameters(
     current_client: Client = Depends(get_current_client),
 ) -> dict:
     assert_client_scope(id, current_client)
-    return {"client_id": id, "risk_parameters": current_client.risk_params or {}}
+    return {"client_id": id, "risk_parameters": merge_risk_parameters(current_client.risk_params)}
 
 
 @router.post("/{id}/agent/chat", response_model=ChatResponse)

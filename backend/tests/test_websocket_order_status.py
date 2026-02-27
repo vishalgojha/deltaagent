@@ -105,6 +105,63 @@ async def test_websocket_stream_emits_order_status_event(monkeypatch: pytest.Mon
 
 
 @pytest.mark.asyncio
+async def test_websocket_stream_accepts_auth_token_in_first_message(monkeypatch: pytest.MonkeyPatch) -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    client_id = uuid.uuid4()
+
+    async with session_maker() as db:
+        db.add(
+            Client(
+                id=client_id,
+                email="ws-auth-message@example.com",
+                hashed_password="hashed",
+                broker_type="ibkr",
+                encrypted_creds="enc",
+                risk_params={"delta_threshold": 0.2},
+                mode="confirmation",
+                tier="basic",
+                is_active=True,
+            )
+        )
+        db.add(
+            Trade(
+                client_id=client_id,
+                action="SELL",
+                symbol="ES",
+                instrument="FOP",
+                qty=1,
+                fill_price=20.0,
+                order_id="OID-WS-AUTH-1",
+                agent_reasoning="stream test",
+                mode="confirmation",
+                status="filled",
+                pnl=0.0,
+            )
+        )
+        await db.commit()
+
+    app = FastAPI()
+    app.include_router(websocket_api.router)
+    app.state.db_sessionmaker = session_maker
+    app.state.agent_manager = _FakeManager()
+
+    monkeypatch.setattr(websocket_api, "decode_access_token", lambda _token: client_id)
+    monkeypatch.setattr(websocket_api.vault, "decrypt", lambda _cipher: {"host": "localhost", "port": 4002, "client_id": 1})
+
+    with TestClient(app) as test_client:
+        with test_client.websocket_connect(f"/clients/{client_id}/stream") as ws:
+            ws.send_json({"type": "auth", "token": "test-token"})
+            first = ws.receive_json()
+
+    assert first.get("type") in {"agent_status", "order_status"}
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_websocket_stream_emits_multiple_trade_transitions(monkeypatch: pytest.MonkeyPatch) -> None:
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
     async with engine.begin() as conn:

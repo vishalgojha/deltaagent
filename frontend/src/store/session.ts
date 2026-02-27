@@ -16,10 +16,20 @@ function emitSessionUpdate() {
   listeners.forEach((listener) => listener());
 }
 
+function getStorage(): Storage | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
 function readSession(): Session {
+  const storage = getStorage();
   return {
-    token: localStorage.getItem(TOKEN_KEY) ?? "",
-    clientId: localStorage.getItem(CLIENT_KEY) ?? ""
+    token: storage?.getItem(TOKEN_KEY) ?? "",
+    clientId: storage?.getItem(CLIENT_KEY) ?? ""
   };
 }
 
@@ -45,13 +55,15 @@ export function subscribeSession(listener: SessionListener) {
 }
 
 export function saveSession(token: string, clientId: string) {
-  localStorage.setItem(TOKEN_KEY, token);
-  localStorage.setItem(CLIENT_KEY, clientId);
+  const storage = getStorage();
+  storage?.setItem(TOKEN_KEY, token);
+  storage?.setItem(CLIENT_KEY, clientId);
   if (typeof window !== "undefined") window.dispatchEvent(new Event(SESSION_EVENT));
 }
 
 export function clearSession() {
-  localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(CLIENT_KEY);
+  const storage = getStorage();
+  storage?.removeItem(TOKEN_KEY);
+  storage?.removeItem(CLIENT_KEY);
   if (typeof window !== "undefined") window.dispatchEvent(new Event(SESSION_EVENT));
 }

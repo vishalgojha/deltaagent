@@ -11,6 +11,7 @@ from backend.api.error_utils import broker_http_exception
 from backend.brokers.base import BrokerError
 from backend.db.models import Client
 from backend.db.session import get_db_session
+from backend.risk_defaults import merge_risk_parameters
 from backend.schemas import BrokerConnectRequest, BrokerPreflightCheck, BrokerPreflightResponse, ClientOut, OnboardRequest
 
 
@@ -25,7 +26,7 @@ async def onboard_client(payload: OnboardRequest, db: AsyncSession = Depends(get
         hashed_password=hash_password(payload.password),
         broker_type=payload.broker_type,
         encrypted_creds=vault.encrypt(payload.broker_credentials),
-        risk_params=payload.risk_parameters,
+        risk_params=merge_risk_parameters(payload.risk_parameters),
         mode="confirmation",
         tier=payload.subscription_tier,
         is_active=True,
@@ -79,7 +80,6 @@ async def connect_broker(
         "client_id": id,
         "broker": current_client.broker_type,
         "active_client_id": active_client_id,
-        "broker_credentials": creds,
     }
 
 

@@ -728,6 +728,64 @@ pre {
   font-size: 12px;
 }
 
+.dashboard-page .execution-alert-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.dashboard-page .execution-alert {
+  border: 1px solid rgba(91, 105, 130, 0.46);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  background: rgba(10, 16, 25, 0.72);
+}
+
+.dashboard-page .execution-alert.warning {
+  border-color: rgba(245, 158, 11, 0.58);
+  background: rgba(120, 53, 15, 0.24);
+}
+
+.dashboard-page .execution-alert.critical {
+  border-color: rgba(239, 68, 68, 0.62);
+  background: rgba(127, 29, 29, 0.28);
+}
+
+.dashboard-page .execution-alert-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.dashboard-page .execution-alert-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  min-height: 22px;
+  padding: 0 8px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border: 1px solid transparent;
+}
+
+.dashboard-page .execution-alert-badge.warning {
+  color: #fcd34d;
+  border-color: rgba(245, 158, 11, 0.62);
+  background: rgba(120, 53, 15, 0.35);
+}
+
+.dashboard-page .execution-alert-badge.critical {
+  color: #fecaca;
+  border-color: rgba(239, 68, 68, 0.68);
+  background: rgba(127, 29, 29, 0.45);
+}
+
 .broker-settings-page .preflight-check,
 .strategy-templates-page .preflight-check {
   background: rgba(10, 16, 25, 0.72);

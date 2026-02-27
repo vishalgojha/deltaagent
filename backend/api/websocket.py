@@ -18,7 +18,7 @@ vault = CredentialVault()
 @router.websocket("/clients/{id}/stream")
 async def stream_client(websocket: WebSocket, id: uuid.UUID) -> None:
     await websocket.accept()
-    token = websocket.query_params.get("token", "")
+    token = await _resolve_auth_token(websocket)
     try:
         token_client = decode_access_token(token)
         if token_client != id:
@@ -115,6 +115,27 @@ async def stream_client(websocket: WebSocket, id: uuid.UUID) -> None:
                 await asyncio.sleep(1.0)
     except WebSocketDisconnect:
         return
+
+
+async def _resolve_auth_token(websocket: WebSocket) -> str:
+    query_token = websocket.query_params.get("token", "").strip()
+    if query_token:
+        return query_token
+
+    try:
+        raw = await asyncio.wait_for(websocket.receive_text(), timeout=5.0)
+    except Exception:  # noqa: BLE001
+        return ""
+
+    try:
+        payload = json.loads(raw)
+    except Exception:  # noqa: BLE001
+        return ""
+
+    if not isinstance(payload, dict):
+        return ""
+    token = payload.get("token")
+    return token.strip() if isinstance(token, str) else ""
 
 
 async def _load_greeks_cache(websocket: WebSocket, client_id: uuid.UUID) -> dict | None:

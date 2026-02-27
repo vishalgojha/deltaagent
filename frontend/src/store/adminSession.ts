@@ -1,13 +1,22 @@
 const ADMIN_TOKEN_KEY = "ta_admin_token";
 
+function getStorage(): Storage | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
 export function getAdminSessionToken(): string {
-  return localStorage.getItem(ADMIN_TOKEN_KEY) ?? "";
+  return getStorage()?.getItem(ADMIN_TOKEN_KEY) ?? "";
 }
 
 export function saveAdminSessionToken(token: string): void {
-  localStorage.setItem(ADMIN_TOKEN_KEY, token);
+  getStorage()?.setItem(ADMIN_TOKEN_KEY, token);
 }
 
 export function clearAdminSessionToken(): void {
-  localStorage.removeItem(ADMIN_TOKEN_KEY);
+  getStorage()?.removeItem(ADMIN_TOKEN_KEY);
 }

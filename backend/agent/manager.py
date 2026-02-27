@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.agent.core import TradingAgent
 from backend.agent.memory import AgentMemoryStore
 from backend.agent.risk import RiskGovernor
+from backend.brokers.base import BrokerBase
 from backend.brokers.factory import build_broker
 from backend.config import get_settings
 from backend.safety.emergency_halt import EmergencyHaltController
@@ -19,7 +20,7 @@ class AgentManager:
     ) -> None:
         self.memory_store = AgentMemoryStore()
         self.risk_governor = RiskGovernor()
-        self._brokers: dict[uuid.UUID, object] = {}
+        self._brokers: dict[uuid.UUID, BrokerBase] = {}
         self.emergency_halt = emergency_halt
         self.redis_client = redis_client
 
@@ -31,7 +32,12 @@ class AgentManager:
         db: AsyncSession,
         force_recreate_broker: bool = False,
     ) -> TradingAgent:
-        broker = None if force_recreate_broker else self._brokers.get(client_id)
+        existing = self._brokers.get(client_id)
+        if force_recreate_broker and existing is not None:
+            await self._disconnect_broker(existing)
+            self._brokers.pop(client_id, None)
+
+        broker = self._brokers.get(client_id)
         if broker is None:
             broker = build_broker(
                 broker_type=broker_type,
@@ -48,3 +54,15 @@ class AgentManager:
             emergency_halt=self.emergency_halt,
             redis_client=self.redis_client,
         )
+
+    async def shutdown(self) -> None:
+        for broker in list(self._brokers.values()):
+            await self._disconnect_broker(broker)
+        self._brokers.clear()
+
+    @staticmethod
+    async def _disconnect_broker(broker: BrokerBase) -> None:
+        try:
+            await broker.disconnect()
+        except Exception:  # noqa: BLE001
+            pass

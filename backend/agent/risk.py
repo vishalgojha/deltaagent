@@ -40,6 +40,7 @@ class RiskGovernor:
         net_delta: float,
         projected_delta: float | None,
         daily_pnl: float,
+        recent_trade_pnls: list[float] | None,
         open_legs: int,
         bid: float,
         ask: float,
@@ -76,7 +77,7 @@ class RiskGovernor:
             if spread_ratio > 0.15:
                 raise RiskViolation("SPREAD_LIMIT", f"spread_ratio={spread_ratio:.4f} > 0.15")
 
-        losses = self._loss_streak.get(client_id, [])
+        losses = recent_trade_pnls if recent_trade_pnls is not None else self._loss_streak.get(client_id, [])
         if len(losses) >= 3 and all(loss <= -500 for loss in losses[-3:]):
             raise RiskViolation("CIRCUIT_BREAKER", "3 consecutive losses > $500 triggered halt")
 

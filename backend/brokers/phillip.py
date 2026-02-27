@@ -57,6 +57,11 @@ class PhillipBroker(BrokerBase):
     async def connect(self) -> None:
         await self.authenticate()
 
+    async def disconnect(self) -> None:
+        self._token = None
+        self._token_expires_at = None
+        await self._http.aclose()
+
     async def _headers(self) -> dict[str, str]:
         await self.refresh_token()
         return {"Authorization": f"Bearer {self._token}"}
@@ -128,6 +133,11 @@ class PhillipBroker(BrokerBase):
             order_id=str(body.get("orderId")),
             status=body.get("status", "submitted"),
             fill_price=body.get("fillPrice"),
+            broker_fill_id=str(body.get("fillId")) if body.get("fillId") is not None else None,
+            expected_price=body.get("expectedPrice"),
+            fees=float(body.get("fees", 0.0) or 0.0),
+            realized_pnl=body.get("realizedPnl"),
+            raw_payload=body if isinstance(body, dict) else {},
         )
 
     async def stream_greeks(self, callback: Callable[[dict[str, Any]], Any]) -> None:

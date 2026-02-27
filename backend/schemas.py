@@ -124,6 +124,51 @@ class TradeOut(BaseModel):
     pnl: float
 
 
+class TradeFillIngestRequest(BaseModel):
+    status: str = "filled"
+    qty: int = Field(gt=0)
+    fill_price: float = Field(gt=0)
+    expected_price: float | None = Field(default=None, gt=0)
+    fees: float = 0.0
+    realized_pnl: float | None = None
+    fill_timestamp: datetime | None = None
+    broker_fill_id: str | None = None
+    idempotency_key: str | None = None
+    raw_payload: dict = Field(default_factory=dict)
+
+
+class TradeFillOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    trade_id: int
+    order_id: str | None
+    broker_fill_id: str | None
+    ingest_idempotency_key: str | None
+    status: str
+    qty: int
+    fill_price: float
+    expected_price: float | None
+    slippage_bps: float | None
+    fees: float
+    realized_pnl: float | None
+    fill_timestamp: datetime
+    raw_payload: dict
+    created_at: datetime
+
+
+class ExecutionQualityOut(BaseModel):
+    client_id: uuid.UUID
+    window_start: datetime | None
+    window_end: datetime | None
+    trades_total: int
+    trades_with_fills: int
+    fill_events: int
+    avg_slippage_bps: float | None
+    median_slippage_bps: float | None
+    avg_first_fill_latency_ms: float | None
+    generated_at: datetime
+
+
 class ProposalOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int

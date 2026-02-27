@@ -50,6 +50,11 @@ class AgentTools:
             "order_id": result.order_id,
             "status": result.status,
             "fill_price": result.fill_price,
+            "broker_fill_id": result.broker_fill_id,
+            "expected_price": result.expected_price,
+            "fees": result.fees,
+            "realized_pnl": result.realized_pnl,
+            "raw_payload": result.raw_payload,
         }
 
     async def get_market_data(self, symbol: str) -> dict[str, float]:

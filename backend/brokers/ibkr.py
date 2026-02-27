@@ -72,6 +72,16 @@ class IBKRBroker(BrokerBase):
         self._credentials["client_id"] = self._active_client_id
         self._configure_market_data_type()
 
+    async def disconnect(self) -> None:
+        self._stream_enabled = False
+        if self._ib is not None:
+            try:
+                if bool(getattr(self._ib, "isConnected", lambda: False)()):
+                    self._ib.disconnect()
+            except Exception:  # noqa: BLE001
+                logger.warning("Failed to disconnect IBKR session cleanly")
+        self._connected = False
+
     async def get_positions(self) -> list[dict[str, Any]]:
         if not self._ib:
             return []
@@ -246,10 +256,21 @@ class IBKRBroker(BrokerBase):
         status = getattr(trade.orderStatus, "status", "submitted")
         order_id = str(getattr(trade.order, "orderId", ""))
         fill_price = self._safe_float(getattr(trade.orderStatus, "avgFillPrice", 0.0))
+        perm_id = getattr(trade.orderStatus, "permId", None)
+        broker_fill_id = str(perm_id) if perm_id not in (None, "", 0) else None
         return BrokerOrderResult(
             order_id=order_id or "ibkr-submitted",
             status=status,
             fill_price=fill_price if fill_price > 0 else limit_price,
+            broker_fill_id=broker_fill_id,
+            expected_price=float(limit_price) if limit_price is not None else None,
+            fees=0.0,
+            realized_pnl=None,
+            raw_payload={
+                "ib_status": status,
+                "order_id": order_id or "ibkr-submitted",
+                "perm_id": broker_fill_id,
+            },
         )
 
     async def stream_greeks(self, callback: Callable[[dict[str, Any]], Any]) -> None:

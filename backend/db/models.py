@@ -89,6 +89,27 @@ class Trade(Base):
     pnl: Mapped[float] = mapped_column(Float, default=0.0)
 
 
+class TradeFill(Base):
+    __tablename__ = "trade_fills"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    client_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("clients.id"), index=True)
+    trade_id: Mapped[int] = mapped_column(Integer, ForeignKey("trades.id"), index=True)
+    order_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    broker_fill_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    ingest_idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(32), default="filled", index=True)
+    qty: Mapped[int] = mapped_column(Integer)
+    fill_price: Mapped[float] = mapped_column(Float)
+    expected_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    slippage_bps: Mapped[float | None] = mapped_column(Float, nullable=True)
+    fees: Mapped[float] = mapped_column(Float, default=0.0)
+    realized_pnl: Mapped[float | None] = mapped_column(Float, nullable=True)
+    fill_timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    raw_payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
 class Proposal(Base):
     __tablename__ = "proposals"
 

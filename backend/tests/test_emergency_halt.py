@@ -153,3 +153,28 @@ async def test_emergency_halt_blocks_proposal_approval_execution() -> None:
 
         with pytest.raises(ValueError, match="globally halted"):
             await agent.approve_proposal(client_id, proposal.id)
+
+
+class _FakeRedis:
+    def __init__(self) -> None:
+        self._data: dict[str, str] = {}
+
+    async def get(self, key: str) -> str | None:
+        return self._data.get(key)
+
+    async def set(self, key: str, value: str) -> None:
+        self._data[key] = value
+
+
+@pytest.mark.asyncio
+async def test_emergency_halt_state_persists_in_shared_store() -> None:
+    fake_redis = _FakeRedis()
+    writer = EmergencyHaltController(redis_client=fake_redis)  # type: ignore[arg-type]
+    reader = EmergencyHaltController(redis_client=fake_redis)  # type: ignore[arg-type]
+
+    await writer.set(halted=True, reason="persisted", updated_by="admin")
+    state = await reader.get()
+
+    assert state.halted is True
+    assert state.reason == "persisted"
+    assert state.updated_by == "admin"

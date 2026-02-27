@@ -106,6 +106,9 @@ pytest backend/tests -q
 - `POST /clients/{id}/connect-broker`
 - `GET /clients/{id}/positions`
 - `GET /clients/{id}/trades`
+- `POST /clients/{id}/trades/{trade_id}/fills` (supports `Idempotency-Key` header)
+- `GET /clients/{id}/trades/{trade_id}/fills`
+- `GET /clients/{id}/metrics/execution-quality`
 - `POST /clients/{id}/agent/mode`
 - `POST /clients/{id}/agent/parameters`
 - `POST /clients/{id}/agent/chat`

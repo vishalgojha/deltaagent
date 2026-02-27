@@ -91,7 +91,13 @@ describe("OnboardingPage", () => {
             delta_threshold: 0.2,
             max_size: 10,
             max_loss: 5000,
-            max_open_positions: 20
+            max_open_positions: 20,
+            execution_alert_slippage_warn_bps: 15,
+            execution_alert_slippage_critical_bps: 30,
+            execution_alert_latency_warn_ms: 3000,
+            execution_alert_latency_critical_ms: 8000,
+            execution_alert_fill_coverage_warn_pct: 75,
+            execution_alert_fill_coverage_critical_pct: 50
           }),
           subscription_tier: "basic"
         })

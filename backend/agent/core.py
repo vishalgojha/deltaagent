@@ -19,6 +19,7 @@ from backend.agent.tools import AgentTools
 from backend.brokers.base import BrokerBase
 from backend.config import get_settings
 from backend.db.models import AgentMemory, AuditLog, Client, Instrument, Proposal, StrategyProfile, Trade
+from backend.execution.fills import build_trade_fill_from_order, estimate_expected_price
 from backend.safety.emergency_halt import EmergencyHaltController
 from backend.strategies.delta_neutral import detect_rebalance_need
 
@@ -216,8 +217,9 @@ class TradingAgent:
         order_delta_est = float(trade_payload.get("delta_estimate", 0.5))
         direction = 1 if trade_payload["action"].upper() == "BUY" else -1
         projected_delta = net_delta + direction * int(trade_payload["qty"]) * order_delta_est
-        recent = await self._recent_trades(client_id, 30)
-        daily_pnl = sum(t.pnl for t in recent)
+        day_trades = await self._day_trades(client_id, limit=500)
+        daily_pnl = sum(float(t.pnl) for t in day_trades)
+        recent_trade_pnls = [float(t.pnl) for t in day_trades[:10]]
         open_legs = sum(abs(int(p.get("qty", 0))) for p in portfolio["positions"])
         try:
             if profile is not None:
@@ -242,6 +244,7 @@ class TradingAgent:
                 net_delta=net_delta,
                 projected_delta=projected_delta,
                 daily_pnl=daily_pnl,
+                recent_trade_pnls=recent_trade_pnls,
                 open_legs=open_legs,
                 bid=market.get("bid", 0),
                 ask=market.get("ask", 0),
@@ -277,11 +280,34 @@ class TradingAgent:
             agent_reasoning=reasoning,
             mode=self.memory_store.get_or_create(client_id).mode,
             status=order.get("status", "submitted"),
-            pnl=0.0,
+            pnl=float(order.get("realized_pnl", order.get("pnl", 0.0))),
         )
         self.db.add(trade)
+        await self.db.flush()
+
+        expected_price = estimate_expected_price(
+            trade.action,
+            bid=self._safe_float(market.get("bid")),
+            ask=self._safe_float(market.get("ask")),
+            limit_price=trade_payload.get("limit_price"),
+            fallback_price=order.get("expected_price"),
+        )
+        fill = build_trade_fill_from_order(
+            client_id=client_id,
+            trade_id=trade.id,
+            order_id=trade.order_id,
+            action=trade.action,
+            qty=trade.qty,
+            order_payload=order,
+            expected_price=expected_price,
+        )
+        if fill is not None:
+            self.db.add(fill)
+
         await self.db.commit()
         await self.db.refresh(trade)
+        if trade.pnl != 0.0:
+            self.risk_governor.register_trade_pnl(str(client_id), float(trade.pnl))
         assert strategy is not None
         await self._audit(
             client_id,
@@ -996,6 +1022,16 @@ class TradingAgent:
     async def _recent_trades(self, client_id: uuid.UUID, limit: int) -> list[Trade]:
         result = await self.db.execute(
             select(Trade).where(Trade.client_id == client_id).order_by(desc(Trade.timestamp)).limit(limit)
+        )
+        return list(result.scalars().all())
+
+    async def _day_trades(self, client_id: uuid.UUID, limit: int) -> list[Trade]:
+        day_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        result = await self.db.execute(
+            select(Trade)
+            .where(Trade.client_id == client_id, Trade.timestamp >= day_start)
+            .order_by(desc(Trade.timestamp))
+            .limit(limit)
         )
         return list(result.scalars().all())
 

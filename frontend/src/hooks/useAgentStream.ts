@@ -7,8 +7,11 @@ export function useAgentStream(clientId: string, token: string) {
 
   useEffect(() => {
     if (!clientId || !token) return;
-    const socket = new WebSocket(wsUrl(clientId, token));
-    socket.onopen = () => setConnected(true);
+    const socket = new WebSocket(wsUrl(clientId));
+    socket.onopen = () => {
+      setConnected(true);
+      socket.send(JSON.stringify({ type: "auth", token }));
+    };
     socket.onclose = () => setConnected(false);
     socket.onerror = () => setConnected(false);
     socket.onmessage = (event) => {

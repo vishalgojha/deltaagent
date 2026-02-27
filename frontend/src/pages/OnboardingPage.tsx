@@ -9,7 +9,13 @@ const DEFAULT_RISK = {
   delta_threshold: "0.2",
   max_size: "10",
   max_loss: "5000",
-  max_open_positions: "20"
+  max_open_positions: "20",
+  execution_alert_slippage_warn_bps: "15",
+  execution_alert_slippage_critical_bps: "30",
+  execution_alert_latency_warn_ms: "3000",
+  execution_alert_latency_critical_ms: "8000",
+  execution_alert_fill_coverage_warn_pct: "75",
+  execution_alert_fill_coverage_critical_pct: "50"
 };
 
 const DEFAULT_IBKR = {
@@ -122,7 +128,13 @@ export function OnboardingPage() {
         delta_threshold: Number(risk.delta_threshold),
         max_size: Number(risk.max_size),
         max_loss: Number(risk.max_loss),
-        max_open_positions: Number(risk.max_open_positions)
+        max_open_positions: Number(risk.max_open_positions),
+        execution_alert_slippage_warn_bps: Number(risk.execution_alert_slippage_warn_bps),
+        execution_alert_slippage_critical_bps: Number(risk.execution_alert_slippage_critical_bps),
+        execution_alert_latency_warn_ms: Number(risk.execution_alert_latency_warn_ms),
+        execution_alert_latency_critical_ms: Number(risk.execution_alert_latency_critical_ms),
+        execution_alert_fill_coverage_warn_pct: Number(risk.execution_alert_fill_coverage_warn_pct),
+        execution_alert_fill_coverage_critical_pct: Number(risk.execution_alert_fill_coverage_critical_pct)
       };
 
       if (brokerType === "ibkr") {
@@ -136,10 +148,7 @@ export function OnboardingPage() {
       }
 
       if (
-        !Number.isFinite(riskParameters.delta_threshold) ||
-        !Number.isFinite(riskParameters.max_size) ||
-        !Number.isFinite(riskParameters.max_loss) ||
-        !Number.isFinite(riskParameters.max_open_positions)
+        Object.values(riskParameters).some((value) => typeof value === "number" && !Number.isFinite(value))
       ) {
         setError("Risk parameters must be valid numbers");
         return;

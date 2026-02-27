@@ -17,6 +17,9 @@ class MockBroker(BrokerBase):
     async def connect(self) -> None:
         self._connected = True
 
+    async def disconnect(self) -> None:
+        self._connected = False
+
     async def get_positions(self) -> list[dict[str, Any]]:
         return list(self._positions)
 
@@ -68,6 +71,7 @@ class MockBroker(BrokerBase):
     ) -> BrokerOrderResult:
         self._next_order += 1
         fill_price = limit_price or 10.25
+        expected_price = limit_price if limit_price is not None else 10.20
         position = {
             "symbol": contract.get("symbol", "ES"),
             "instrument_type": contract.get("instrument", "FOP"),
@@ -81,7 +85,16 @@ class MockBroker(BrokerBase):
             "avg_price": fill_price,
         }
         self._positions.append(position)
-        return BrokerOrderResult(order_id=str(self._next_order), status="filled", fill_price=fill_price)
+        return BrokerOrderResult(
+            order_id=str(self._next_order),
+            status="filled",
+            fill_price=fill_price,
+            broker_fill_id=f"mock-fill-{self._next_order}",
+            expected_price=expected_price,
+            fees=0.0,
+            realized_pnl=0.0,
+            raw_payload={"broker": "mock", "position": position},
+        )
 
     async def stream_greeks(self, callback: Callable[[dict[str, Any]], Any]) -> None:
         while self._connected:
@@ -110,6 +123,8 @@ class MockBroker(BrokerBase):
             "order_id": str(self._next_order),
             "status": "filled",
             "fill_price": limit_price or 0.0,
+            "expected_price": limit_price or 0.0,
+            "broker_fill_id": f"mock-combo-fill-{self._next_order}",
             "timestamp": asyncio.get_event_loop().time(),
             "symbol": symbol,
             "legs": legs,
