@@ -60,8 +60,8 @@ test("login -> chat proposal -> modal execute -> reject (real backend, mock brok
 
   await page.getByPlaceholder("Ask the agent...").fill("Rebalance now");
   await page.getByRole("button", { name: "Send" }).click();
-  const secondQuickCard = page.locator(".proposal-quick-card").first();
-  await expect(secondQuickCard).toBeVisible();
-  await secondQuickCard.getByRole("button", { name: "Reject Proposal" }).click();
+  const rejectProposalButton = page.locator('[data-testid^="reject-proposal-"]').first();
+  await expect(rejectProposalButton).toBeVisible();
+  await rejectProposalButton.click();
   await expect(page.locator("p", { hasText: /Proposal #\d+ rejected\./ }).first()).toBeVisible();
 });

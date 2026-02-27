@@ -1,5 +1,9 @@
 import { expect, test } from "@playwright/test";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 function shotPath(filename: string): string {
   return path.resolve(__dirname, "..", "..", "docs", "screenshots", filename);

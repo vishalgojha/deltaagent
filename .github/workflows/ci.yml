@@ -125,7 +125,7 @@ jobs:
       DATABASE_URL: sqlite+aiosqlite:///./ci_smoke.db
       REDIS_URL: redis://localhost:6379/0
       JWT_SECRET: ci-jwt-secret
-      ENCRYPTION_KEY: 12345678901234567890123456789012
+      ENCRYPTION_KEY: "12345678901234567890123456789012"
       ADMIN_API_KEY: ci-admin-key
       AUTO_CREATE_TABLES: "false"
       USE_MOCK_BROKER: "true"
