@@ -147,7 +147,7 @@ jobs:
         run: python scripts/validate_env.py --target staging --strict-warnings
 
       - name: Apply migrations to smoke DB
-        run: alembic -c backend/db/alembic.ini upgrade head
+        run: python -m alembic -c backend/db/alembic.ini upgrade head
 
       - name: Migration precheck (must be at head)
         run: python scripts/migration_precheck.py --alembic-config backend/db/alembic.ini --require-up-to-date
