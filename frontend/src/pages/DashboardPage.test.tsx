@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DashboardPage } from "./DashboardPage";
 import * as endpoints from "../api/endpoints";
+import { RISK_PRESETS } from "../features/riskControls";
 import { renderWithProviders } from "../test/renderWithProviders";
 
 vi.mock("../api/endpoints", async () => {
@@ -14,6 +15,9 @@ vi.mock("../api/endpoints", async () => {
     getTrades: vi.fn(),
     getTradeFills: vi.fn(),
     getExecutionQuality: vi.fn(),
+    getExecutionIncidents: vi.fn(),
+    createExecutionIncidentNote: vi.fn(),
+    setMode: vi.fn(),
     getRiskParameters: vi.fn(),
     updateRiskParameters: vi.fn()
   };
@@ -37,11 +41,25 @@ function mockDashboardLoad() {
     trades_total: 0,
     trades_with_fills: 0,
     fill_events: 0,
+    backfilled_trades: 0,
+    backfilled_fill_events: 0,
     avg_slippage_bps: null,
     median_slippage_bps: null,
     avg_first_fill_latency_ms: null,
     generated_at: new Date().toISOString()
   });
+  vi.mocked(endpoints.getExecutionIncidents).mockResolvedValue([]);
+  vi.mocked(endpoints.createExecutionIncidentNote).mockResolvedValue({
+    id: 1,
+    client_id: "client-1",
+    alert_id: "avg-slippage",
+    severity: "warning",
+    label: "Slippage",
+    note: "note",
+    context: {},
+    created_at: new Date().toISOString()
+  });
+  vi.mocked(endpoints.setMode).mockResolvedValue({ ok: true });
   vi.mocked(endpoints.getRiskParameters).mockResolvedValue({
     client_id: "client-1",
     risk_parameters: {
@@ -160,6 +178,8 @@ describe("DashboardPage Risk Controls", () => {
       trades_total: 10,
       trades_with_fills: 4,
       fill_events: 4,
+      backfilled_trades: 2,
+      backfilled_fill_events: 2,
       avg_slippage_bps: 36.5,
       median_slippage_bps: 20.2,
       avg_first_fill_latency_ms: 9100,
@@ -172,6 +192,8 @@ describe("DashboardPage Risk Controls", () => {
     expect(await screen.findByText(/Avg slippage/i)).toBeInTheDocument();
     expect(await screen.findByText(/Avg first-fill latency/i)).toBeInTheDocument();
     expect(await screen.findByText(/Fill coverage .* is below .* target\./i)).toBeInTheDocument();
+    const runbookHeadings = await screen.findAllByText(/What To Do Now/i);
+    expect(runbookHeadings.length).toBeGreaterThan(0);
   });
 
   it("uses client-configured alert thresholds", async () => {
@@ -197,6 +219,8 @@ describe("DashboardPage Risk Controls", () => {
       trades_total: 10,
       trades_with_fills: 8,
       fill_events: 8,
+      backfilled_trades: 0,
+      backfilled_fill_events: 0,
       avg_slippage_bps: 30,
       median_slippage_bps: 20,
       avg_first_fill_latency_ms: 9000,
@@ -206,5 +230,108 @@ describe("DashboardPage Risk Controls", () => {
     renderWithProviders(<DashboardPage clientId="client-1" />);
     expect(await screen.findByRole("heading", { name: "Execution Alerts" })).toBeInTheDocument();
     expect(await screen.findByText(/No active execution alerts/i)).toBeInTheDocument();
+  });
+
+  it("pauses autonomous mode from an alert action", async () => {
+    const user = userEvent.setup();
+    vi.mocked(endpoints.getStatus).mockResolvedValue({
+      client_id: "client-1",
+      mode: "autonomous",
+      healthy: true,
+      last_action: null,
+      net_greeks: { delta: 0, gamma: 0, theta: 0, vega: 0 }
+    });
+    vi.mocked(endpoints.getExecutionQuality).mockResolvedValue({
+      client_id: "client-1",
+      window_start: null,
+      window_end: null,
+      trades_total: 5,
+      trades_with_fills: 1,
+      fill_events: 1,
+      backfilled_trades: 0,
+      backfilled_fill_events: 0,
+      avg_slippage_bps: 45,
+      median_slippage_bps: 45,
+      avg_first_fill_latency_ms: 9000,
+      generated_at: new Date().toISOString()
+    });
+    renderWithProviders(<DashboardPage clientId="client-1" />);
+
+    await screen.findByRole("heading", { name: "Execution Alerts" });
+    await screen.findByText(/Avg slippage/i);
+    await user.click(screen.getAllByRole("button", { name: "Pause Autonomous" })[0]);
+
+    await waitFor(() => {
+      expect(vi.mocked(endpoints.setMode)).toHaveBeenCalledWith("client-1", "confirmation");
+    });
+  });
+
+  it("applies conservative preset from an alert action", async () => {
+    const user = userEvent.setup();
+    vi.mocked(endpoints.getExecutionQuality).mockResolvedValue({
+      client_id: "client-1",
+      window_start: null,
+      window_end: null,
+      trades_total: 5,
+      trades_with_fills: 2,
+      fill_events: 2,
+      backfilled_trades: 0,
+      backfilled_fill_events: 0,
+      avg_slippage_bps: 45,
+      median_slippage_bps: 45,
+      avg_first_fill_latency_ms: 9000,
+      generated_at: new Date().toISOString()
+    });
+    vi.mocked(endpoints.updateRiskParameters).mockResolvedValue({
+      client_id: "client-1",
+      risk_parameters: RISK_PRESETS.conservative
+    });
+
+    renderWithProviders(<DashboardPage clientId="client-1" />);
+    await screen.findByRole("heading", { name: "Execution Alerts" });
+    await screen.findByText(/Avg slippage/i);
+    await user.click(screen.getAllByRole("button", { name: "Apply Conservative Preset" })[0]);
+
+    await waitFor(() => {
+      expect(vi.mocked(endpoints.updateRiskParameters)).toHaveBeenCalledWith("client-1", RISK_PRESETS.conservative);
+    });
+  });
+
+  it("creates an incident note from an alert card", async () => {
+    const user = userEvent.setup();
+    vi.mocked(endpoints.getExecutionQuality).mockResolvedValue({
+      client_id: "client-1",
+      window_start: null,
+      window_end: null,
+      trades_total: 5,
+      trades_with_fills: 1,
+      fill_events: 1,
+      backfilled_trades: 0,
+      backfilled_fill_events: 0,
+      avg_slippage_bps: 45,
+      median_slippage_bps: 45,
+      avg_first_fill_latency_ms: 9000,
+      generated_at: new Date().toISOString()
+    });
+
+    renderWithProviders(<DashboardPage clientId="client-1" />);
+    await screen.findByRole("heading", { name: "Execution Alerts" });
+    await screen.findByText(/Avg slippage/i);
+
+    const noteAreas = screen.getAllByLabelText("Incident Note");
+    await user.type(noteAreas[0], "Paused and switched to conservative profile.");
+    await user.click(screen.getAllByRole("button", { name: "Create Incident Note" })[0]);
+
+    await waitFor(() => {
+      expect(vi.mocked(endpoints.createExecutionIncidentNote)).toHaveBeenCalledWith(
+        "client-1",
+        expect.objectContaining({
+          alert_id: "avg-slippage",
+          severity: "critical",
+          label: "Slippage",
+          note: "Paused and switched to conservative profile."
+        })
+      );
+    });
   });
 });

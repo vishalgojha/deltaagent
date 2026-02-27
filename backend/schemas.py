@@ -163,10 +163,31 @@ class ExecutionQualityOut(BaseModel):
     trades_total: int
     trades_with_fills: int
     fill_events: int
+    backfilled_trades: int = 0
+    backfilled_fill_events: int = 0
     avg_slippage_bps: float | None
     median_slippage_bps: float | None
     avg_first_fill_latency_ms: float | None
     generated_at: datetime
+
+
+class IncidentNoteCreateRequest(BaseModel):
+    alert_id: str = Field(min_length=1, max_length=128)
+    severity: Literal["warning", "critical"]
+    label: str = Field(min_length=1, max_length=80)
+    note: str = Field(min_length=1, max_length=2000)
+    context: dict = Field(default_factory=dict)
+
+
+class IncidentNoteOut(BaseModel):
+    id: int
+    client_id: uuid.UUID
+    alert_id: str
+    severity: Literal["warning", "critical"]
+    label: str
+    note: str
+    context: dict
+    created_at: datetime
 
 
 class ProposalOut(BaseModel):

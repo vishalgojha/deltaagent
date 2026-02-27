@@ -142,10 +142,23 @@ export type ExecutionQuality = {
   trades_total: number;
   trades_with_fills: number;
   fill_events: number;
+  backfilled_trades: number;
+  backfilled_fill_events: number;
   avg_slippage_bps: number | null;
   median_slippage_bps: number | null;
   avg_first_fill_latency_ms: number | null;
   generated_at: string;
+};
+
+export type ExecutionIncidentNote = {
+  id: number;
+  client_id: string;
+  alert_id: string;
+  severity: "warning" | "critical";
+  label: string;
+  note: string;
+  context: Record<string, unknown>;
+  created_at: string;
 };
 
 export type Proposal = {

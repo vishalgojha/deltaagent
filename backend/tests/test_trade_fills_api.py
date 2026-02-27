@@ -234,6 +234,166 @@ async def test_execution_quality_metrics_aggregates_fill_events() -> None:
 
 
 @pytest.mark.asyncio
+async def test_execution_quality_backfills_filled_trades_without_fill_events() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    client_id = uuid.uuid4()
+    async with session_maker() as db:
+        db.add(
+            Client(
+                id=client_id,
+                email="fills-backfill@example.com",
+                hashed_password=hash_password("secret"),
+                broker_type="ibkr",
+                encrypted_creds="enc",
+                risk_params={},
+                mode="confirmation",
+                tier="basic",
+                is_active=True,
+            )
+        )
+        db.add(
+            Trade(
+                id=1,
+                client_id=client_id,
+                action="BUY",
+                symbol="ES",
+                instrument="FOP",
+                qty=1,
+                fill_price=12.25,
+                order_id="OID-BACKFILL-1",
+                agent_reasoning="legacy",
+                mode="confirmation",
+                status="filled",
+                pnl=0.0,
+            )
+        )
+        db.add(
+            Trade(
+                id=2,
+                client_id=client_id,
+                action="BUY",
+                symbol="NQ",
+                instrument="FOP",
+                qty=1,
+                fill_price=None,
+                order_id="OID-BACKFILL-2",
+                agent_reasoning="pending",
+                mode="confirmation",
+                status="submitted",
+                pnl=0.0,
+            )
+        )
+        await db.commit()
+
+    app = FastAPI()
+    app.include_router(trades_api.router)
+
+    async def override_current_client() -> SimpleNamespace:
+        return SimpleNamespace(id=client_id)
+
+    async def override_db_session():
+        async with session_maker() as db:
+            yield db
+
+    app.dependency_overrides[get_current_client] = override_current_client
+    app.dependency_overrides[get_db_session] = override_db_session
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http:
+        metrics_backfill = await http.get(f"/clients/{client_id}/metrics/execution-quality")
+        metrics_raw = await http.get(f"/clients/{client_id}/metrics/execution-quality?backfill_missing=false")
+
+    assert metrics_backfill.status_code == 200
+    payload = metrics_backfill.json()
+    assert payload["trades_total"] == 2
+    assert payload["trades_with_fills"] == 1
+    assert payload["fill_events"] == 1
+    assert payload["backfilled_trades"] == 1
+    assert payload["backfilled_fill_events"] == 1
+    assert payload["avg_slippage_bps"] == pytest.approx(0.0)
+    assert payload["avg_first_fill_latency_ms"] == pytest.approx(0.0)
+
+    assert metrics_raw.status_code == 200
+    raw_payload = metrics_raw.json()
+    assert raw_payload["trades_with_fills"] == 0
+    assert raw_payload["fill_events"] == 0
+    assert raw_payload["backfilled_trades"] == 0
+    assert raw_payload["backfilled_fill_events"] == 0
+    assert raw_payload["avg_slippage_bps"] is None
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_create_and_list_execution_incident_notes() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    client_id = uuid.uuid4()
+    async with session_maker() as db:
+        db.add(
+            Client(
+                id=client_id,
+                email="fills-incident@example.com",
+                hashed_password=hash_password("secret"),
+                broker_type="ibkr",
+                encrypted_creds="enc",
+                risk_params={},
+                mode="confirmation",
+                tier="basic",
+                is_active=True,
+            )
+        )
+        await db.commit()
+
+    app = FastAPI()
+    app.include_router(trades_api.router)
+
+    async def override_current_client() -> SimpleNamespace:
+        return SimpleNamespace(id=client_id)
+
+    async def override_db_session():
+        async with session_maker() as db:
+            yield db
+
+    app.dependency_overrides[get_current_client] = override_current_client
+    app.dependency_overrides[get_db_session] = override_db_session
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http:
+        created = await http.post(
+            f"/clients/{client_id}/metrics/incidents",
+            json={
+                "alert_id": "first-fill-latency",
+                "severity": "critical",
+                "label": "Latency",
+                "note": "Paused autonomous mode while validating broker latency.",
+                "context": {"source": "dashboard"},
+            },
+        )
+        listed = await http.get(f"/clients/{client_id}/metrics/incidents")
+
+    assert created.status_code == 200
+    created_payload = created.json()
+    assert created_payload["alert_id"] == "first-fill-latency"
+    assert created_payload["severity"] == "critical"
+    assert created_payload["label"] == "Latency"
+    assert created_payload["note"].startswith("Paused autonomous mode")
+
+    assert listed.status_code == 200
+    listed_payload = listed.json()
+    assert len(listed_payload) == 1
+    assert listed_payload[0]["alert_id"] == "first-fill-latency"
+    assert listed_payload[0]["context"]["source"] == "dashboard"
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_ingest_trade_fill_idempotency_key_deduplicates_requests() -> None:
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
     async with engine.begin() as conn:

@@ -1,6 +1,17 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { getExecutionQuality, getPositions, getRiskParameters, getStatus, getTradeFills, getTrades, updateRiskParameters } from "../api/endpoints";
+import {
+  createExecutionIncidentNote,
+  getExecutionIncidents,
+  getExecutionQuality,
+  getPositions,
+  getRiskParameters,
+  getStatus,
+  getTradeFills,
+  getTrades,
+  setMode,
+  updateRiskParameters
+} from "../api/endpoints";
 import {
   RISK_PRESETS,
   type RiskParameters,
@@ -10,7 +21,7 @@ import {
   toRiskFormValues,
   validateRiskValues
 } from "../features/riskControls";
-import type { AgentStatus, ExecutionQuality, Position, Trade, TradeFill } from "../types";
+import type { AgentStatus, ExecutionIncidentNote, ExecutionQuality, Position, Trade, TradeFill } from "../types";
 
 type Props = { clientId: string };
 type ExecutionAlertSeverity = "warning" | "critical";
@@ -28,6 +39,24 @@ type ExecutionAlertThresholds = {
   latencyCriticalMs: number;
   fillCoverageWarnPct: number;
   fillCoverageCriticalPct: number;
+};
+
+const RUNBOOK_BY_ALERT: Record<string, string[]> = {
+  "avg-slippage": [
+    "Pause autonomous mode to stop new executions while pricing is reviewed.",
+    "Compare expected vs filled prices on the last 5 fills and validate market-data freshness.",
+    "Apply the Conservative risk preset until slippage returns under warning threshold."
+  ],
+  "first-fill-latency": [
+    "Pause autonomous mode and verify broker/API latency from the connectivity console.",
+    "Retry broker session and inspect order lifecycle timestamps in the fill timeline.",
+    "Escalate to broker support if latency remains above threshold for 3+ trades."
+  ],
+  "fill-coverage": [
+    "Pause autonomous mode and inspect partially filled/open orders for stale routing.",
+    "Reduce order aggressiveness using the Conservative preset while monitoring coverage recovery.",
+    "Record an incident note with trade IDs impacted and mitigation steps taken."
+  ]
 };
 
 function buildExecutionAlerts(metrics: ExecutionQuality | null, thresholds: ExecutionAlertThresholds): ExecutionAlert[] {
@@ -82,6 +111,9 @@ export function DashboardPage({ clientId }: Props) {
   const [riskStatus, setRiskStatus] = useState("");
   const [riskServerError, setRiskServerError] = useState("");
   const [selectedTradeId, setSelectedTradeId] = useState<number | null>(null);
+  const [executionActionStatus, setExecutionActionStatus] = useState("");
+  const [executionActionError, setExecutionActionError] = useState("");
+  const [incidentDrafts, setIncidentDrafts] = useState<Record<string, string>>({});
 
   const dashboardQuery = useQuery({
     queryKey: ["dashboard", clientId],
@@ -104,6 +136,11 @@ export function DashboardPage({ clientId }: Props) {
     queryFn: () => getExecutionQuality(clientId)
   });
   const executionQuality: ExecutionQuality | null = executionQualityQuery.data ?? null;
+  const incidentNotesQuery = useQuery({
+    queryKey: ["execution-incidents", clientId],
+    queryFn: () => getExecutionIncidents(clientId, 10)
+  });
+  const incidentNotes: ExecutionIncidentNote[] = incidentNotesQuery.data ?? [];
   const executionThresholds = useMemo<ExecutionAlertThresholds>(
     () => ({
       slippageWarnBps: parseRiskNumber(
@@ -171,6 +208,21 @@ export function DashboardPage({ clientId }: Props) {
   const saveRiskMutation = useMutation({
     mutationFn: (payload: RiskParameters) => updateRiskParameters(clientId, payload)
   });
+  const pauseAutonomousMutation = useMutation({
+    mutationFn: () => setMode(clientId, "confirmation")
+  });
+  const applyConservativeMutation = useMutation({
+    mutationFn: () => updateRiskParameters(clientId, RISK_PRESETS.conservative)
+  });
+  const createIncidentMutation = useMutation({
+    mutationFn: (payload: {
+      alert_id: string;
+      severity: ExecutionAlertSeverity;
+      label: string;
+      note: string;
+      context: Record<string, unknown>;
+    }) => createExecutionIncidentNote(clientId, payload)
+  });
 
   function onRiskFieldChange(field: RiskField, value: string) {
     setRiskValues((prev) => ({ ...prev, [field]: value }));
@@ -204,6 +256,65 @@ export function DashboardPage({ clientId }: Props) {
       setRiskStatus("Risk controls updated");
     } catch (err) {
       setRiskServerError(err instanceof Error ? err.message : "Failed to update risk controls");
+    }
+  }
+
+  function clearExecutionActionMessages() {
+    setExecutionActionStatus("");
+    setExecutionActionError("");
+  }
+
+  async function onPauseAutonomous(alert: ExecutionAlert) {
+    clearExecutionActionMessages();
+    try {
+      await pauseAutonomousMutation.mutateAsync();
+      await dashboardQuery.refetch();
+      setExecutionActionStatus(`Autonomous mode paused from ${alert.label} alert.`);
+    } catch (err) {
+      setExecutionActionError(err instanceof Error ? err.message : "Failed to pause autonomous mode");
+    }
+  }
+
+  async function onApplyConservative(alert: ExecutionAlert) {
+    clearExecutionActionMessages();
+    try {
+      const response = await applyConservativeMutation.mutateAsync();
+      setRiskValues(toRiskFormValues(response.risk_parameters));
+      setRiskErrors({});
+      setRiskStatus("Conservative preset applied from execution alert.");
+      setExecutionActionStatus(`Conservative preset applied from ${alert.label} alert.`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to apply conservative preset";
+      setRiskServerError(message);
+      setExecutionActionError(message);
+    }
+  }
+
+  function onIncidentDraftChange(alertId: string, note: string) {
+    setIncidentDrafts((prev) => ({ ...prev, [alertId]: note }));
+  }
+
+  async function onCreateIncident(alert: ExecutionAlert) {
+    clearExecutionActionMessages();
+    const trimmed = (incidentDrafts[alert.id] ?? "").trim();
+    const note = trimmed || `${alert.label}: ${alert.message}`;
+    try {
+      await createIncidentMutation.mutateAsync({
+        alert_id: alert.id,
+        severity: alert.severity,
+        label: alert.label,
+        note,
+        context: {
+          alert_message: alert.message,
+          source: "dashboard_execution_alert",
+          generated_at: new Date().toISOString()
+        }
+      });
+      setIncidentDrafts((prev) => ({ ...prev, [alert.id]: "" }));
+      await incidentNotesQuery.refetch();
+      setExecutionActionStatus(`Incident note created for ${alert.label}.`);
+    } catch (err) {
+      setExecutionActionError(err instanceof Error ? err.message : "Failed to create incident note");
     }
   }
 
@@ -256,6 +367,8 @@ export function DashboardPage({ clientId }: Props) {
           Latency {executionThresholds.latencyWarnMs}/{executionThresholds.latencyCriticalMs} ms,
           Fill Coverage {executionThresholds.fillCoverageWarnPct}/{executionThresholds.fillCoverageCriticalPct}%.
         </p>
+        {executionActionStatus && <p style={{ color: "#166534", margin: "0 0 8px 0" }}>{executionActionStatus}</p>}
+        {executionActionError && <p style={{ color: "#991b1b", margin: "0 0 8px 0" }}>{executionActionError}</p>}
         {executionQualityQuery.isLoading ? (
           <p className="muted">Evaluating execution quality...</p>
         ) : !executionQuality ? (
@@ -273,9 +386,66 @@ export function DashboardPage({ clientId }: Props) {
                   <strong>{alert.label}</strong>
                 </div>
                 <p>{alert.message}</p>
+                <div className="execution-alert-actions">
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => onPauseAutonomous(alert)}
+                    disabled={pauseAutonomousMutation.isPending || status?.mode !== "autonomous"}
+                  >
+                    {status?.mode === "autonomous" ? "Pause Autonomous" : "Autonomous Paused"}
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => onApplyConservative(alert)}
+                    disabled={applyConservativeMutation.isPending}
+                  >
+                    {applyConservativeMutation.isPending ? "Applying..." : "Apply Conservative Preset"}
+                  </button>
+                </div>
+                <div className="execution-incident-note">
+                  <label className="grid">
+                    Incident Note
+                    <textarea
+                      value={incidentDrafts[alert.id] ?? ""}
+                      onChange={(event) => onIncidentDraftChange(alert.id, event.target.value)}
+                      placeholder="Summarize what happened and what you changed..."
+                      rows={2}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => onCreateIncident(alert)}
+                    disabled={createIncidentMutation.isPending}
+                  >
+                    {createIncidentMutation.isPending ? "Saving..." : "Create Incident Note"}
+                  </button>
+                </div>
+                <div className="execution-runbook">
+                  <h4>What To Do Now</h4>
+                  <ol>
+                    {(RUNBOOK_BY_ALERT[alert.id] ?? []).map((step) => (
+                      <li key={step}>{step}</li>
+                    ))}
+                  </ol>
+                </div>
               </li>
             ))}
           </ul>
+        )}
+        {incidentNotes.length > 0 && (
+          <div className="execution-incident-history">
+            <h4>Recent Incident Notes</h4>
+            <ul>
+              {incidentNotes.slice(0, 5).map((item) => (
+                <li key={item.id}>
+                  <strong>{item.label}</strong> [{item.severity}] - {item.note}
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
       </section>
 
@@ -512,9 +682,13 @@ export function DashboardPage({ clientId }: Props) {
             <p>Trades in Window: {executionQuality.trades_total}</p>
             <p>Trades With Fills: {executionQuality.trades_with_fills}</p>
             <p>Fill Events: {executionQuality.fill_events}</p>
+            <p>Backfilled Trades: {executionQuality.backfilled_trades}</p>
             <p>Avg Slippage (bps): {executionQuality.avg_slippage_bps?.toFixed(2) ?? "-"}</p>
             <p>Median Slippage (bps): {executionQuality.median_slippage_bps?.toFixed(2) ?? "-"}</p>
             <p>Avg First Fill Latency (ms): {executionQuality.avg_first_fill_latency_ms?.toFixed(0) ?? "-"}</p>
+            {executionQuality.backfilled_trades > 0 && (
+              <p className="muted">Includes backfilled metrics from legacy filled trades without fill events.</p>
+            )}
           </>
         ) : (
           <p className="muted">{executionQualityQuery.isLoading ? "Loading execution quality..." : "No execution metrics yet"}</p>

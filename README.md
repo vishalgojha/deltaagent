@@ -108,7 +108,9 @@ pytest backend/tests -q
 - `GET /clients/{id}/trades`
 - `POST /clients/{id}/trades/{trade_id}/fills` (supports `Idempotency-Key` header)
 - `GET /clients/{id}/trades/{trade_id}/fills`
-- `GET /clients/{id}/metrics/execution-quality`
+- `GET /clients/{id}/metrics/execution-quality` (`backfill_missing=true|false`)
+- `GET /clients/{id}/metrics/incidents`
+- `POST /clients/{id}/metrics/incidents`
 - `POST /clients/{id}/agent/mode`
 - `POST /clients/{id}/agent/parameters`
 - `POST /clients/{id}/agent/chat`
@@ -153,6 +155,8 @@ Broker-related API failures now return structured `detail` payloads for telemetr
 - `render.yaml` for Render blueprint (backend + frontend)
 - `scripts/validate_env.py` for env safety checks
 - `scripts/post_deploy_smoke.py` for post-deploy API smoke tests
+- `scripts/migration_precheck.py` for Alembic head/graph safety checks
+- `scripts/migration_rollback.py` for controlled rollback execution
 
 ### Validate environment before deploy
 ```bash
@@ -198,6 +202,18 @@ Create new revision:
 
 ```bash
 alembic -c backend/db/alembic.ini revision -m "your_change"
+```
+
+Precheck before release:
+
+```bash
+python scripts/migration_precheck.py --alembic-config backend/db/alembic.ini --require-up-to-date
+```
+
+Rollback one revision:
+
+```bash
+python scripts/migration_rollback.py --alembic-config backend/db/alembic.ini --steps 1
 ```
 
 For production, set `AUTO_CREATE_TABLES=false` and run Alembic migrations explicitly.

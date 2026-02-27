@@ -7,6 +7,7 @@ import type {
   ChatResponse,
   ClientOut,
   EmergencyHaltStatus,
+  ExecutionIncidentNote,
   ExecutionQuality,
   LoginResponse,
   Position,
@@ -135,15 +136,43 @@ export function ingestTradeFill(
   });
 }
 
-export function getExecutionQuality(clientId: string, from?: string, to?: string) {
+export function getExecutionQuality(
+  clientId: string,
+  from?: string,
+  to?: string,
+  options?: { backfillMissing?: boolean }
+) {
   const params = new URLSearchParams();
   if (from) params.set("from", from);
   if (to) params.set("to", to);
+  if (options?.backfillMissing === false) {
+    params.set("backfill_missing", "false");
+  }
   const qs = params.toString();
   const path = qs
     ? `/clients/${clientId}/metrics/execution-quality?${qs}`
     : `/clients/${clientId}/metrics/execution-quality`;
   return api<ExecutionQuality>(path);
+}
+
+export function getExecutionIncidents(clientId: string, limit = 20) {
+  return api<ExecutionIncidentNote[]>(`/clients/${clientId}/metrics/incidents?limit=${limit}`);
+}
+
+export function createExecutionIncidentNote(
+  clientId: string,
+  payload: {
+    alert_id: string;
+    severity: "warning" | "critical";
+    label: string;
+    note: string;
+    context?: Record<string, unknown>;
+  }
+) {
+  return api<ExecutionIncidentNote>(`/clients/${clientId}/metrics/incidents`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
 }
 
 export function getProposals(clientId: string) {

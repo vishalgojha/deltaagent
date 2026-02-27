@@ -786,6 +786,63 @@ pre {
   background: rgba(127, 29, 29, 0.45);
 }
 
+.dashboard-page .execution-alert-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.dashboard-page .execution-incident-note {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.dashboard-page .execution-incident-note textarea {
+  min-height: 56px;
+}
+
+.dashboard-page .execution-runbook {
+  margin-top: 10px;
+  border: 1px solid rgba(91, 105, 130, 0.35);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  background: rgba(8, 13, 20, 0.45);
+}
+
+.dashboard-page .execution-runbook h4 {
+  margin: 0 0 6px 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.dashboard-page .execution-runbook ol {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+}
+
+.dashboard-page .execution-incident-history {
+  margin-top: 10px;
+  border-top: 1px solid rgba(91, 105, 130, 0.32);
+  padding-top: 10px;
+}
+
+.dashboard-page .execution-incident-history h4 {
+  margin: 0 0 6px 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.dashboard-page .execution-incident-history ul {
+  margin: 0;
+  padding-left: 16px;
+  display: grid;
+  gap: 4px;
+}
+
 .broker-settings-page .preflight-check,
 .strategy-templates-page .preflight-check {
   background: rgba(10, 16, 25, 0.72);

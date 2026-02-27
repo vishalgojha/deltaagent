@@ -11,10 +11,18 @@ from backend.api.deps import assert_client_scope, get_current_client
 from backend.db.models import AuditLog, Client, Trade, TradeFill
 from backend.db.session import get_db_session
 from backend.execution.fills import compute_slippage_bps
-from backend.schemas import ExecutionQualityOut, TradeFillIngestRequest, TradeFillOut, TradeOut
+from backend.schemas import (
+    ExecutionQualityOut,
+    IncidentNoteCreateRequest,
+    IncidentNoteOut,
+    TradeFillIngestRequest,
+    TradeFillOut,
+    TradeOut,
+)
 
 
 router = APIRouter(prefix="/clients", tags=["trades"])
+FILLED_STATUSES = {"filled", "partially_filled", "completed"}
 
 
 @router.get("/{id}/trades", response_model=list[TradeOut])
@@ -158,6 +166,7 @@ async def get_execution_quality(
     id: uuid.UUID,
     from_ts: datetime | None = Query(default=None, alias="from"),
     to_ts: datetime | None = Query(default=None, alias="to"),
+    backfill_missing: bool = Query(default=True),
     current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db_session),
 ) -> ExecutionQualityOut:
@@ -178,6 +187,8 @@ async def get_execution_quality(
             trades_total=0,
             trades_with_fills=0,
             fill_events=0,
+            backfilled_trades=0,
+            backfilled_fill_events=0,
             avg_slippage_bps=None,
             median_slippage_bps=None,
             avg_first_fill_latency_ms=None,
@@ -193,7 +204,24 @@ async def get_execution_quality(
     fill_rows = await db.execute(fills_stmt.order_by(TradeFill.fill_timestamp.asc(), TradeFill.id.asc()))
     fills = list(fill_rows.scalars().all())
 
+    backfilled_trade_ids: set[int] = set()
+    if backfill_missing:
+        filled_trade_ids = {fill.trade_id for fill in fills}
+        for trade in trades:
+            if trade.id in filled_trade_ids:
+                continue
+            if str(trade.status).lower() not in FILLED_STATUSES:
+                continue
+            if trade.fill_price is None:
+                continue
+            if int(trade.qty) <= 0:
+                continue
+            backfilled_trade_ids.add(trade.id)
+
     slippages = [float(fill.slippage_bps) for fill in fills if fill.slippage_bps is not None]
+    if backfilled_trade_ids:
+        # Backfilled trades represent known executions from legacy data with no fill event rows.
+        slippages.extend([0.0] * len(backfilled_trade_ids))
     avg_slippage = float(mean(slippages)) if slippages else None
     median_slippage = float(median(slippages)) if slippages else None
 
@@ -212,8 +240,11 @@ async def get_execution_quality(
         first_fill_latency_ms.append(latency_ms)
         seen_trades.add(fill.trade_id)
 
+    if backfilled_trade_ids:
+        first_fill_latency_ms.extend([0.0] * len(backfilled_trade_ids))
+
     avg_first_fill_latency_ms = float(mean(first_fill_latency_ms)) if first_fill_latency_ms else None
-    trades_with_fills = len({fill.trade_id for fill in fills})
+    trades_with_fills = len({fill.trade_id for fill in fills}.union(backfilled_trade_ids))
 
     return ExecutionQualityOut(
         client_id=id,
@@ -221,12 +252,60 @@ async def get_execution_quality(
         window_end=to_ts,
         trades_total=len(trades),
         trades_with_fills=trades_with_fills,
-        fill_events=len(fills),
+        fill_events=len(fills) + len(backfilled_trade_ids),
+        backfilled_trades=len(backfilled_trade_ids),
+        backfilled_fill_events=len(backfilled_trade_ids),
         avg_slippage_bps=avg_slippage,
         median_slippage_bps=median_slippage,
         avg_first_fill_latency_ms=avg_first_fill_latency_ms,
         generated_at=datetime.now(timezone.utc),
     )
+
+
+@router.post("/{id}/metrics/incidents", response_model=IncidentNoteOut)
+async def create_incident_note(
+    id: uuid.UUID,
+    payload: IncidentNoteCreateRequest,
+    current_client: Client = Depends(get_current_client),
+    db: AsyncSession = Depends(get_db_session),
+) -> IncidentNoteOut:
+    assert_client_scope(id, current_client)
+    row = AuditLog(
+        client_id=id,
+        event_type="execution_alert_incident",
+        risk_rule_triggered=payload.alert_id,
+        details={
+            "alert_id": payload.alert_id,
+            "severity": payload.severity,
+            "label": payload.label,
+            "note": payload.note,
+            "context": payload.context,
+        },
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return _to_incident_note_out(row)
+
+
+@router.get("/{id}/metrics/incidents", response_model=list[IncidentNoteOut])
+async def list_incident_notes(
+    id: uuid.UUID,
+    limit: int = Query(default=50, ge=1, le=500),
+    current_client: Client = Depends(get_current_client),
+    db: AsyncSession = Depends(get_db_session),
+) -> list[IncidentNoteOut]:
+    assert_client_scope(id, current_client)
+    rows = await db.execute(
+        select(AuditLog)
+        .where(
+            AuditLog.client_id == id,
+            AuditLog.event_type == "execution_alert_incident",
+        )
+        .order_by(desc(AuditLog.timestamp), desc(AuditLog.id))
+        .limit(limit)
+    )
+    return [_to_incident_note_out(row) for row in rows.scalars().all()]
 
 
 def _as_utc(value: datetime) -> datetime:
@@ -280,3 +359,18 @@ def _normalize_optional_text(value: str | None) -> str | None:
         return None
     normalized = value.strip()
     return normalized if normalized else None
+
+
+def _to_incident_note_out(row: AuditLog) -> IncidentNoteOut:
+    details = row.details if isinstance(row.details, dict) else {}
+    context = details.get("context")
+    return IncidentNoteOut(
+        id=row.id,
+        client_id=row.client_id,
+        alert_id=str(details.get("alert_id") or row.risk_rule_triggered or "unknown"),
+        severity="critical" if str(details.get("severity")).lower() == "critical" else "warning",
+        label=str(details.get("label") or "Execution Alert"),
+        note=str(details.get("note") or ""),
+        context=context if isinstance(context, dict) else {},
+        created_at=row.timestamp,
+    )
