@@ -147,6 +147,20 @@ export type ExecutionQuality = {
   avg_slippage_bps: number | null;
   median_slippage_bps: number | null;
   avg_first_fill_latency_ms: number | null;
+  auto_remediation: {
+    enabled: boolean;
+    active_alert_id: string | null;
+    active_alert_severity: "warning" | "critical" | null;
+    planned_action: string;
+    outcome: string;
+    message: string;
+    cooldown_minutes: number;
+    cooldown_remaining_seconds: number;
+    actions_last_hour: number;
+    max_actions_per_hour: number;
+    last_action: string | null;
+    last_action_at: string | null;
+  } | null;
   generated_at: string;
 };
 

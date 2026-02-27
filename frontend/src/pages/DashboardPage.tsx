@@ -10,6 +10,7 @@ import {
   getTradeFills,
   getTrades,
   setMode,
+  updateAgentParameters,
   updateRiskParameters
 } from "../api/endpoints";
 import {
@@ -25,6 +26,7 @@ import type { AgentStatus, ExecutionIncidentNote, ExecutionQuality, Position, Tr
 
 type Props = { clientId: string };
 type ExecutionAlertSeverity = "warning" | "critical";
+type AutoRemediationAction = "none" | "apply_conservative" | "pause_autonomous";
 type ExecutionAlert = {
   id: string;
   severity: ExecutionAlertSeverity;
@@ -40,6 +42,24 @@ type ExecutionAlertThresholds = {
   fillCoverageWarnPct: number;
   fillCoverageCriticalPct: number;
 };
+type AutoRemediationFormValues = {
+  enabled: boolean;
+  warningAction: AutoRemediationAction;
+  criticalAction: AutoRemediationAction;
+  cooldownMinutes: string;
+  maxActionsPerHour: string;
+};
+type AutoRemediationFormErrors = {
+  cooldownMinutes?: string;
+  maxActionsPerHour?: string;
+};
+
+const AUTO_REMEDIATION_ACTION_LABELS: Record<AutoRemediationAction, string> = {
+  none: "No Action",
+  apply_conservative: "Apply Conservative Preset",
+  pause_autonomous: "Pause Autonomous Mode"
+};
+const AUTO_REMEDIATION_ACTIONS: AutoRemediationAction[] = ["none", "apply_conservative", "pause_autonomous"];
 
 const RUNBOOK_BY_ALERT: Record<string, string[]> = {
   "avg-slippage": [
@@ -105,6 +125,65 @@ function parseRiskNumber(raw: string, fallback: number): number {
   return Number.isFinite(numeric) ? numeric : fallback;
 }
 
+function normalizeAutoRemediationAction(raw: unknown, fallback: AutoRemediationAction): AutoRemediationAction {
+  const value = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  if (value === "none" || value === "apply_conservative" || value === "pause_autonomous") {
+    return value;
+  }
+  return fallback;
+}
+
+function parseBoolean(raw: unknown, fallback: boolean): boolean {
+  if (typeof raw === "boolean") return raw;
+  if (typeof raw === "string") {
+    const normalized = raw.trim().toLowerCase();
+    if (normalized === "true" || normalized === "1" || normalized === "yes" || normalized === "on") return true;
+    if (normalized === "false" || normalized === "0" || normalized === "no" || normalized === "off") return false;
+  }
+  if (typeof raw === "number") return raw !== 0;
+  return fallback;
+}
+
+function toAutoRemediationFormValues(parameters: Record<string, unknown> | null | undefined): AutoRemediationFormValues {
+  return {
+    enabled: parseBoolean(parameters?.auto_remediation_enabled, false),
+    warningAction: normalizeAutoRemediationAction(parameters?.auto_remediation_warning_action, "none"),
+    criticalAction: normalizeAutoRemediationAction(parameters?.auto_remediation_critical_action, "pause_autonomous"),
+    cooldownMinutes: String(parameters?.auto_remediation_cooldown_minutes ?? 20),
+    maxActionsPerHour: String(parameters?.auto_remediation_max_actions_per_hour ?? 2)
+  };
+}
+
+function validateAutoRemediationValues(
+  values: AutoRemediationFormValues
+): { parsed: Record<string, unknown> | null; errors: AutoRemediationFormErrors } {
+  const errors: AutoRemediationFormErrors = {};
+  const cooldown = Number(values.cooldownMinutes.trim());
+  const maxActions = Number(values.maxActionsPerHour.trim());
+
+  if (!Number.isInteger(cooldown) || cooldown < 1 || cooldown > 1440) {
+    errors.cooldownMinutes = "Cooldown must be an integer between 1 and 1440 minutes";
+  }
+  if (!Number.isInteger(maxActions) || maxActions < 1 || maxActions > 50) {
+    errors.maxActionsPerHour = "Max actions/hour must be an integer between 1 and 50";
+  }
+
+  if (Object.keys(errors).length > 0) {
+    return { parsed: null, errors };
+  }
+
+  return {
+    parsed: {
+      auto_remediation_enabled: values.enabled,
+      auto_remediation_warning_action: values.warningAction,
+      auto_remediation_critical_action: values.criticalAction,
+      auto_remediation_cooldown_minutes: cooldown,
+      auto_remediation_max_actions_per_hour: maxActions
+    },
+    errors
+  };
+}
+
 export function DashboardPage({ clientId }: Props) {
   const [riskValues, setRiskValues] = useState<RiskFormValues>(toRiskFormValues(null));
   const [riskErrors, setRiskErrors] = useState<RiskFormErrors>({});
@@ -114,6 +193,12 @@ export function DashboardPage({ clientId }: Props) {
   const [executionActionStatus, setExecutionActionStatus] = useState("");
   const [executionActionError, setExecutionActionError] = useState("");
   const [incidentDrafts, setIncidentDrafts] = useState<Record<string, string>>({});
+  const [autoRemediationValues, setAutoRemediationValues] = useState<AutoRemediationFormValues>(
+    toAutoRemediationFormValues(null)
+  );
+  const [autoRemediationErrors, setAutoRemediationErrors] = useState<AutoRemediationFormErrors>({});
+  const [autoRemediationStatus, setAutoRemediationStatus] = useState("");
+  const [autoRemediationServerError, setAutoRemediationServerError] = useState("");
 
   const dashboardQuery = useQuery({
     queryKey: ["dashboard", clientId],
@@ -136,6 +221,7 @@ export function DashboardPage({ clientId }: Props) {
     queryFn: () => getExecutionQuality(clientId)
   });
   const executionQuality: ExecutionQuality | null = executionQualityQuery.data ?? null;
+  const autoRemediationRuntime = executionQuality?.auto_remediation ?? null;
   const incidentNotesQuery = useQuery({
     queryKey: ["execution-incidents", clientId],
     queryFn: () => getExecutionIncidents(clientId, 10)
@@ -188,7 +274,8 @@ export function DashboardPage({ clientId }: Props) {
 
   useEffect(() => {
     if (riskQuery.data) {
-      setRiskValues(toRiskFormValues(riskQuery.data.risk_parameters));
+      setRiskValues(toRiskFormValues(riskQuery.data.risk_parameters as Partial<RiskParameters>));
+      setAutoRemediationValues(toAutoRemediationFormValues(riskQuery.data.risk_parameters));
     }
     if (riskQuery.error) {
       setRiskServerError(riskQuery.error instanceof Error ? riskQuery.error.message : "Failed to load risk controls");
@@ -223,6 +310,9 @@ export function DashboardPage({ clientId }: Props) {
       context: Record<string, unknown>;
     }) => createExecutionIncidentNote(clientId, payload)
   });
+  const saveAutoRemediationMutation = useMutation({
+    mutationFn: (payload: Record<string, unknown>) => updateAgentParameters(clientId, payload)
+  });
 
   function onRiskFieldChange(field: RiskField, value: string) {
     setRiskValues((prev) => ({ ...prev, [field]: value }));
@@ -256,6 +346,37 @@ export function DashboardPage({ clientId }: Props) {
       setRiskStatus("Risk controls updated");
     } catch (err) {
       setRiskServerError(err instanceof Error ? err.message : "Failed to update risk controls");
+    }
+  }
+
+  function onAutoRemediationFieldChange<K extends keyof AutoRemediationFormValues>(
+    field: K,
+    value: AutoRemediationFormValues[K]
+  ) {
+    setAutoRemediationValues((prev) => ({ ...prev, [field]: value }));
+    setAutoRemediationErrors({});
+    setAutoRemediationStatus("");
+    setAutoRemediationServerError("");
+  }
+
+  async function onAutoRemediationSubmit(event: FormEvent) {
+    event.preventDefault();
+    setAutoRemediationStatus("");
+    setAutoRemediationServerError("");
+
+    const validation = validateAutoRemediationValues(autoRemediationValues);
+    if (!validation.parsed) {
+      setAutoRemediationErrors(validation.errors);
+      return;
+    }
+
+    setAutoRemediationErrors({});
+    try {
+      const response = await saveAutoRemediationMutation.mutateAsync(validation.parsed);
+      setAutoRemediationValues(toAutoRemediationFormValues(response.risk_parameters));
+      setAutoRemediationStatus("Auto-remediation policy updated");
+    } catch (err) {
+      setAutoRemediationServerError(err instanceof Error ? err.message : "Failed to update auto-remediation policy");
     }
   }
 
@@ -362,6 +483,132 @@ export function DashboardPage({ clientId }: Props) {
 
       <section className="card">
         <h3>Execution Alerts</h3>
+        <div className="execution-policy-panel">
+          <h4>Auto-Remediation Policy</h4>
+          <form className="grid" onSubmit={onAutoRemediationSubmit}>
+            <label className="row">
+              <input
+                type="checkbox"
+                checked={autoRemediationValues.enabled}
+                onChange={(event) => onAutoRemediationFieldChange("enabled", event.target.checked)}
+                style={{ width: "auto" }}
+              />
+              Enable Auto-Remediation
+            </label>
+            <div className="grid grid-2">
+              <label className="grid">
+                Warning Action
+                <select
+                  value={autoRemediationValues.warningAction}
+                  onChange={(event) =>
+                    onAutoRemediationFieldChange(
+                      "warningAction",
+                      normalizeAutoRemediationAction(event.target.value, autoRemediationValues.warningAction)
+                    )
+                  }
+                >
+                  {AUTO_REMEDIATION_ACTIONS.map((action) => (
+                    <option key={action} value={action}>
+                      {AUTO_REMEDIATION_ACTION_LABELS[action]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="grid">
+                Critical Action
+                <select
+                  value={autoRemediationValues.criticalAction}
+                  onChange={(event) =>
+                    onAutoRemediationFieldChange(
+                      "criticalAction",
+                      normalizeAutoRemediationAction(event.target.value, autoRemediationValues.criticalAction)
+                    )
+                  }
+                >
+                  {AUTO_REMEDIATION_ACTIONS.map((action) => (
+                    <option key={action} value={action}>
+                      {AUTO_REMEDIATION_ACTION_LABELS[action]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="grid grid-2">
+              <label className="grid">
+                Cooldown (minutes)
+                <input
+                  value={autoRemediationValues.cooldownMinutes}
+                  onChange={(event) => onAutoRemediationFieldChange("cooldownMinutes", event.target.value)}
+                  inputMode="numeric"
+                />
+                {autoRemediationErrors.cooldownMinutes && (
+                  <span className="field-error">{autoRemediationErrors.cooldownMinutes}</span>
+                )}
+              </label>
+              <label className="grid">
+                Max Actions Per Hour
+                <input
+                  value={autoRemediationValues.maxActionsPerHour}
+                  onChange={(event) => onAutoRemediationFieldChange("maxActionsPerHour", event.target.value)}
+                  inputMode="numeric"
+                />
+                {autoRemediationErrors.maxActionsPerHour && (
+                  <span className="field-error">{autoRemediationErrors.maxActionsPerHour}</span>
+                )}
+              </label>
+            </div>
+            <button type="submit" disabled={saveAutoRemediationMutation.isPending}>
+              {saveAutoRemediationMutation.isPending ? "Saving..." : "Save Auto-Remediation Policy"}
+            </button>
+            {autoRemediationStatus && <p style={{ color: "#166534", margin: 0 }}>{autoRemediationStatus}</p>}
+            {autoRemediationServerError && <p style={{ color: "#991b1b", margin: 0 }}>{autoRemediationServerError}</p>}
+          </form>
+          {autoRemediationRuntime && (
+            <div className="policy-grid" style={{ marginTop: 10 }}>
+              <article className="policy-chip">
+                <p className="metric-label">Outcome</p>
+                <p className="metric-value">{autoRemediationRuntime.outcome}</p>
+              </article>
+              <article className="policy-chip">
+                <p className="metric-label">Planned Action</p>
+                <p className="metric-value">
+                  {AUTO_REMEDIATION_ACTION_LABELS[
+                    normalizeAutoRemediationAction(autoRemediationRuntime.planned_action, "none")
+                  ]}
+                </p>
+              </article>
+              <article className="policy-chip">
+                <p className="metric-label">Last Action</p>
+                <p className="metric-value">
+                  {autoRemediationRuntime.last_action
+                    ? AUTO_REMEDIATION_ACTION_LABELS[
+                        normalizeAutoRemediationAction(autoRemediationRuntime.last_action, "none")
+                      ]
+                    : "-"}
+                </p>
+              </article>
+              <article className="policy-chip">
+                <p className="metric-label">Cooldown</p>
+                <p className="metric-value">
+                  {autoRemediationRuntime.cooldown_remaining_seconds > 0
+                    ? `${autoRemediationRuntime.cooldown_remaining_seconds}s`
+                    : "ready"}
+                </p>
+              </article>
+              <article className="policy-chip">
+                <p className="metric-label">Hourly Budget</p>
+                <p className="metric-value">
+                  {autoRemediationRuntime.actions_last_hour}/{autoRemediationRuntime.max_actions_per_hour}
+                </p>
+              </article>
+            </div>
+          )}
+          {autoRemediationRuntime?.message && (
+            <p className="muted" style={{ marginTop: 8 }}>
+              {autoRemediationRuntime.message}
+            </p>
+          )}
+        </div>
         <p className="muted" style={{ marginBottom: 8 }}>
           Thresholds: Slippage {executionThresholds.slippageWarnBps}/{executionThresholds.slippageCriticalBps} bps,
           Latency {executionThresholds.latencyWarnMs}/{executionThresholds.latencyCriticalMs} ms,

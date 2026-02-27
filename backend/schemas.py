@@ -156,6 +156,21 @@ class TradeFillOut(BaseModel):
     created_at: datetime
 
 
+class AutoRemediationStatusOut(BaseModel):
+    enabled: bool
+    active_alert_id: str | None
+    active_alert_severity: Literal["warning", "critical"] | None
+    planned_action: str
+    outcome: str
+    message: str
+    cooldown_minutes: int
+    cooldown_remaining_seconds: int
+    actions_last_hour: int
+    max_actions_per_hour: int
+    last_action: str | None
+    last_action_at: datetime | None
+
+
 class ExecutionQualityOut(BaseModel):
     client_id: uuid.UUID
     window_start: datetime | None
@@ -168,6 +183,7 @@ class ExecutionQualityOut(BaseModel):
     avg_slippage_bps: float | None
     median_slippage_bps: float | None
     avg_first_fill_latency_ms: float | None
+    auto_remediation: AutoRemediationStatusOut | None = None
     generated_at: datetime
 
 

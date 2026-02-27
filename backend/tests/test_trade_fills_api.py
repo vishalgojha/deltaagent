@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -10,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from backend.api import trades as trades_api
 from backend.api.deps import get_current_client
 from backend.auth.jwt import hash_password
-from backend.db.models import Base, Client, Trade, TradeFill
+from backend.db.models import AuditLog, Base, Client, Trade, TradeFill
 from backend.db.session import get_db_session
 
 
@@ -569,5 +570,216 @@ async def test_ingest_trade_fill_broker_fill_id_deduplicates_requests() -> None:
         fill_rows = await db.execute(select(TradeFill).where(TradeFill.client_id == client_id))
         fills = fill_rows.scalars().all()
         assert len(fills) == 1
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_execution_quality_auto_remediation_pauses_autonomous_on_critical_alert() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    client_id = uuid.uuid4()
+    async with session_maker() as db:
+        db.add(
+            Client(
+                id=client_id,
+                email="fills-auto-remediate@example.com",
+                hashed_password=hash_password("secret"),
+                broker_type="ibkr",
+                encrypted_creds="enc",
+                risk_params={
+                    "auto_remediation_enabled": True,
+                    "auto_remediation_warning_action": "none",
+                    "auto_remediation_critical_action": "pause_autonomous",
+                    "auto_remediation_cooldown_minutes": 20,
+                    "auto_remediation_max_actions_per_hour": 2,
+                    "execution_alert_slippage_warn_bps": 10.0,
+                    "execution_alert_slippage_critical_bps": 20.0,
+                },
+                mode="autonomous",
+                tier="basic",
+                is_active=True,
+            )
+        )
+        db.add(
+            Trade(
+                id=1,
+                client_id=client_id,
+                action="BUY",
+                symbol="ES",
+                instrument="FOP",
+                qty=1,
+                fill_price=None,
+                order_id="OID-AUTO-REM-1",
+                agent_reasoning="test",
+                mode="autonomous",
+                status="submitted",
+                pnl=0.0,
+            )
+        )
+        db.add(
+            TradeFill(
+                client_id=client_id,
+                trade_id=1,
+                order_id="OID-AUTO-REM-1",
+                broker_fill_id="AUTO-REM-FILL-1",
+                status="filled",
+                qty=1,
+                fill_price=10.4,
+                expected_price=10.0,
+                slippage_bps=40.0,
+                fees=0.0,
+                realized_pnl=None,
+                raw_payload={},
+            )
+        )
+        await db.commit()
+
+    app = FastAPI()
+    app.include_router(trades_api.router)
+
+    async def override_current_client() -> SimpleNamespace:
+        return SimpleNamespace(id=client_id)
+
+    async def override_db_session():
+        async with session_maker() as db:
+            yield db
+
+    app.dependency_overrides[get_current_client] = override_current_client
+    app.dependency_overrides[get_db_session] = override_db_session
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http:
+        metrics = await http.get(f"/clients/{client_id}/metrics/execution-quality")
+
+    assert metrics.status_code == 200
+    payload = metrics.json()
+    assert payload["auto_remediation"]["outcome"] == "executed"
+    assert payload["auto_remediation"]["planned_action"] == "pause_autonomous"
+    assert payload["auto_remediation"]["active_alert_id"] == "avg-slippage"
+
+    async with session_maker() as db:
+        refreshed_client = await db.get(Client, client_id)
+        assert refreshed_client is not None
+        assert refreshed_client.mode == "confirmation"
+        assert refreshed_client.risk_params["auto_remediation_last_outcome"] == "executed"
+        assert refreshed_client.risk_params["auto_remediation_last_action"] == "pause_autonomous"
+        log_rows = await db.execute(
+            select(AuditLog).where(
+                AuditLog.client_id == client_id,
+                AuditLog.event_type == "execution_auto_remediation_executed",
+            )
+        )
+        logs = log_rows.scalars().all()
+        assert len(logs) == 1
+        assert logs[0].details["action"] == "pause_autonomous"
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_execution_quality_auto_remediation_respects_cooldown() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    client_id = uuid.uuid4()
+    now = datetime.now(timezone.utc)
+    async with session_maker() as db:
+        db.add(
+            Client(
+                id=client_id,
+                email="fills-auto-remediate-cooldown@example.com",
+                hashed_password=hash_password("secret"),
+                broker_type="ibkr",
+                encrypted_creds="enc",
+                risk_params={
+                    "auto_remediation_enabled": True,
+                    "auto_remediation_warning_action": "none",
+                    "auto_remediation_critical_action": "pause_autonomous",
+                    "auto_remediation_cooldown_minutes": 30,
+                    "auto_remediation_max_actions_per_hour": 2,
+                    "auto_remediation_actions_last_hour": 1,
+                    "auto_remediation_window_started_at": now.isoformat(),
+                    "auto_remediation_last_action": "pause_autonomous",
+                    "auto_remediation_last_action_at": now.isoformat(),
+                    "execution_alert_slippage_warn_bps": 10.0,
+                    "execution_alert_slippage_critical_bps": 20.0,
+                },
+                mode="autonomous",
+                tier="basic",
+                is_active=True,
+            )
+        )
+        db.add(
+            Trade(
+                id=1,
+                client_id=client_id,
+                action="BUY",
+                symbol="ES",
+                instrument="FOP",
+                qty=1,
+                fill_price=None,
+                order_id="OID-AUTO-REM-2",
+                agent_reasoning="test",
+                mode="autonomous",
+                status="submitted",
+                pnl=0.0,
+            )
+        )
+        db.add(
+            TradeFill(
+                client_id=client_id,
+                trade_id=1,
+                order_id="OID-AUTO-REM-2",
+                broker_fill_id="AUTO-REM-FILL-2",
+                status="filled",
+                qty=1,
+                fill_price=10.5,
+                expected_price=10.0,
+                slippage_bps=50.0,
+                fees=0.0,
+                realized_pnl=None,
+                raw_payload={},
+            )
+        )
+        await db.commit()
+
+    app = FastAPI()
+    app.include_router(trades_api.router)
+
+    async def override_current_client() -> SimpleNamespace:
+        return SimpleNamespace(id=client_id)
+
+    async def override_db_session():
+        async with session_maker() as db:
+            yield db
+
+    app.dependency_overrides[get_current_client] = override_current_client
+    app.dependency_overrides[get_db_session] = override_db_session
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http:
+        metrics = await http.get(f"/clients/{client_id}/metrics/execution-quality")
+
+    assert metrics.status_code == 200
+    payload = metrics.json()
+    assert payload["auto_remediation"]["outcome"] == "cooldown"
+    assert payload["auto_remediation"]["cooldown_remaining_seconds"] > 0
+
+    async with session_maker() as db:
+        refreshed_client = await db.get(Client, client_id)
+        assert refreshed_client is not None
+        assert refreshed_client.mode == "autonomous"
+        log_rows = await db.execute(
+            select(AuditLog).where(
+                AuditLog.client_id == client_id,
+                AuditLog.event_type == "execution_auto_remediation_executed",
+            )
+        )
+        logs = log_rows.scalars().all()
+        assert len(logs) == 0
 
     await engine.dispose()

@@ -736,6 +736,25 @@ pre {
   gap: 8px;
 }
 
+.dashboard-page .execution-policy-panel {
+  border: 1px solid rgba(91, 105, 130, 0.4);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  margin: 0 0 10px 0;
+  background: rgba(9, 14, 22, 0.62);
+}
+
+.dashboard-page .execution-policy-panel h4 {
+  margin: 0 0 8px 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.dashboard-page .execution-policy-panel input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+}
+
 .dashboard-page .execution-alert {
   border: 1px solid rgba(91, 105, 130, 0.46);
   border-radius: var(--radius-sm);

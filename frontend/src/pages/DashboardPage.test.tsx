@@ -19,7 +19,8 @@ vi.mock("../api/endpoints", async () => {
     createExecutionIncidentNote: vi.fn(),
     setMode: vi.fn(),
     getRiskParameters: vi.fn(),
-    updateRiskParameters: vi.fn()
+    updateRiskParameters: vi.fn(),
+    updateAgentParameters: vi.fn()
   };
 });
 
@@ -72,7 +73,22 @@ function mockDashboardLoad() {
       execution_alert_latency_warn_ms: 3000,
       execution_alert_latency_critical_ms: 8000,
       execution_alert_fill_coverage_warn_pct: 75,
-      execution_alert_fill_coverage_critical_pct: 50
+      execution_alert_fill_coverage_critical_pct: 50,
+      auto_remediation_enabled: false,
+      auto_remediation_warning_action: "none",
+      auto_remediation_critical_action: "pause_autonomous",
+      auto_remediation_cooldown_minutes: 20,
+      auto_remediation_max_actions_per_hour: 2
+    }
+  });
+  vi.mocked(endpoints.updateAgentParameters).mockResolvedValue({
+    client_id: "client-1",
+    risk_parameters: {
+      auto_remediation_enabled: true,
+      auto_remediation_warning_action: "apply_conservative",
+      auto_remediation_critical_action: "pause_autonomous",
+      auto_remediation_cooldown_minutes: 15,
+      auto_remediation_max_actions_per_hour: 3
     }
   });
 }
@@ -168,6 +184,32 @@ describe("DashboardPage Risk Controls", () => {
     await user.click(screen.getByRole("button", { name: "Save Risk Controls" }));
 
     expect(await screen.findByText("backend unavailable")).toBeInTheDocument();
+  });
+
+  it("updates auto-remediation policy parameters", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<DashboardPage clientId="client-1" />);
+
+    await screen.findByRole("button", { name: "Save Auto-Remediation Policy" });
+    await user.click(screen.getByLabelText("Enable Auto-Remediation"));
+    await user.selectOptions(screen.getByLabelText("Warning Action"), "apply_conservative");
+    await user.selectOptions(screen.getByLabelText("Critical Action"), "pause_autonomous");
+    await user.clear(screen.getByLabelText("Cooldown (minutes)"));
+    await user.type(screen.getByLabelText("Cooldown (minutes)"), "15");
+    await user.clear(screen.getByLabelText("Max Actions Per Hour"));
+    await user.type(screen.getByLabelText("Max Actions Per Hour"), "3");
+    await user.click(screen.getByRole("button", { name: "Save Auto-Remediation Policy" }));
+
+    await waitFor(() => {
+      expect(vi.mocked(endpoints.updateAgentParameters)).toHaveBeenCalledWith("client-1", {
+        auto_remediation_enabled: true,
+        auto_remediation_warning_action: "apply_conservative",
+        auto_remediation_critical_action: "pause_autonomous",
+        auto_remediation_cooldown_minutes: 15,
+        auto_remediation_max_actions_per_hour: 3
+      });
+    });
+    expect(await screen.findByText("Auto-remediation policy updated")).toBeInTheDocument();
   });
 
   it("renders execution alerts when metrics breach thresholds", async () => {

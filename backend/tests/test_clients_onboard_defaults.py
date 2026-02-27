@@ -52,6 +52,11 @@ async def test_onboard_persists_default_execution_alert_thresholds() -> None:
     assert risk["execution_alert_latency_critical_ms"] == 8000
     assert risk["execution_alert_fill_coverage_warn_pct"] == pytest.approx(75.0)
     assert risk["execution_alert_fill_coverage_critical_pct"] == pytest.approx(50.0)
+    assert risk["auto_remediation_enabled"] is False
+    assert risk["auto_remediation_warning_action"] == "none"
+    assert risk["auto_remediation_critical_action"] == "pause_autonomous"
+    assert risk["auto_remediation_cooldown_minutes"] == 20
+    assert risk["auto_remediation_max_actions_per_hour"] == 2
 
     async with session_maker() as db:
         client_id = uuid.UUID(body["id"])

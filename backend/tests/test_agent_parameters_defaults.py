@@ -43,3 +43,8 @@ async def test_get_parameters_merges_defaults_for_legacy_clients() -> None:
     assert risk["execution_alert_latency_critical_ms"] == 8000
     assert risk["execution_alert_fill_coverage_warn_pct"] == pytest.approx(75.0)
     assert risk["execution_alert_fill_coverage_critical_pct"] == pytest.approx(50.0)
+    assert risk["auto_remediation_enabled"] is False
+    assert risk["auto_remediation_warning_action"] == "none"
+    assert risk["auto_remediation_critical_action"] == "pause_autonomous"
+    assert risk["auto_remediation_cooldown_minutes"] == 20
+    assert risk["auto_remediation_max_actions_per_hour"] == 2

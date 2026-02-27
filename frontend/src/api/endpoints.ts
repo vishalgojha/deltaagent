@@ -194,7 +194,7 @@ export function setMode(clientId: string, mode: "confirmation" | "autonomous") {
 }
 
 export function getRiskParameters(clientId: string) {
-  return api<{ client_id: string; risk_parameters: Partial<RiskParameters> }>(
+  return api<{ client_id: string; risk_parameters: Record<string, unknown> }>(
     `/clients/${clientId}/agent/parameters`
   );
 }
