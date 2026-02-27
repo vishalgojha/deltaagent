@@ -1,4 +1,26 @@
 import { defineConfig } from "@playwright/test";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+function resolvePythonCommand(): string {
+  const override = process.env.PLAYWRIGHT_PYTHON?.trim();
+  if (override) {
+    return override;
+  }
+
+  const candidatePaths = [
+    path.resolve(__dirname, "..", ".venv311", "Scripts", "python.exe"),
+    path.resolve(__dirname, "..", ".venv", "Scripts", "python.exe")
+  ];
+  const resolved = candidatePaths.find((candidate) => fs.existsSync(candidate));
+  return resolved ? `"${resolved}"` : "python";
+}
+
+const pythonCommand = resolvePythonCommand();
 
 export default defineConfig({
   testDir: "./e2e",
@@ -9,7 +31,7 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: "python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --app-dir ..",
+      command: `${pythonCommand} -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --app-dir ..`,
       url: "http://127.0.0.1:8000/health",
       reuseExistingServer: true,
       timeout: 120_000,
