@@ -294,7 +294,7 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
       ? (haltReason || "Trading is globally halted.")
       : executionBlocked
       ? (readinessQuery.data?.last_error || "Execution blocked by readiness checks.")
-      : mode === "confirmation" && !executeConfirmed
+      : mode === "confirmation" && !executeConfirmed && !!selectedProposalId
       ? "Confirm execution checkbox to continue."
       : "";
   const executeBlockedByGuard =
@@ -328,6 +328,14 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
       return run.items.some((item) => item.text.toLowerCase().includes(query) || String(item.proposalId ?? "").includes(query));
     });
   }, [runs, timelineQuery, timelineStatusFilter]);
+  const showExecutionPanel =
+    pendingProposals.length > 0 ||
+    executionPhase !== "idle" ||
+    executionSource !== "none" ||
+    !!lastExecutionTrade ||
+    !!executionMessage ||
+    !!executionSentAt ||
+    !!executionResolvedAt;
 
   useEffect(() => {
     setRuns([]);
@@ -983,22 +991,25 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
       const trades = await tradesQuery.refetch();
       const latestTrade = trades.data?.[0] ?? null;
       setLastExecutionTrade(latestTrade);
-      setExecutionResolvedAt(latestTrade?.timestamp ?? nowIso());
-      setExecutionSource(latestTrade ? "polling" : "none");
-      setExecutionPhase("executed");
-      setExecutionMessage(
-        latestTrade
-          ? `Order sent. Latest status: ${latestTrade.status}${latestTrade.order_id ? ` (Order ${latestTrade.order_id})` : ""}`
-          : "Order approval completed. Waiting for broker fill update."
-      );
-      addAuditEntry(
-        "agent",
-        "fill_update",
-        latestTrade ? (mapFillStatus(latestTrade.status) === "rejected" ? "err" : "ok") : "warn",
-        latestTrade
-          ? `status=${latestTrade.status}${latestTrade.order_id ? ` order_id=${latestTrade.order_id}` : ""}`
-          : "no trade row yet"
-      );
+      if (latestTrade) {
+        setExecutionResolvedAt(latestTrade.timestamp ?? nowIso());
+        setExecutionSource("polling");
+        setExecutionPhase("executed");
+        setExecutionMessage(
+          `Order sent. Latest status: ${latestTrade.status}${latestTrade.order_id ? ` (Order ${latestTrade.order_id})` : ""}`
+        );
+        addAuditEntry(
+          "agent",
+          "fill_update",
+          mapFillStatus(latestTrade.status) === "rejected" ? "err" : "ok",
+          `status=${latestTrade.status}${latestTrade.order_id ? ` order_id=${latestTrade.order_id}` : ""}`
+        );
+      } else {
+        setExecutionSource("polling");
+        setExecutionPhase("executing");
+        setExecutionMessage("Order approved. Waiting for first trade status update...");
+        addAuditEntry("agent", "fill_update_pending", "warn", "no trade row yet");
+      }
       pushToast(
         "ok",
         latestTrade
@@ -1385,75 +1396,83 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
           ))}
         </div>
 
-        {pendingProposals.length > 0 && (
+        {showExecutionPanel && (
           <div className="grid" style={{ marginTop: 12 }}>
             <div className="proposal-quick-card">
               <p style={{ margin: 0, fontWeight: 700 }}>Execute Trade</p>
               <p className="muted" style={{ marginTop: 6 }}>
                 Flow: Select proposal, run preflight, execute, then track broker status.
               </p>
-              <div className="row" style={{ marginTop: 8 }}>
-                <label>
-                  Proposal
-                  <select
-                    style={{ marginLeft: 8 }}
-                    value={selectedProposalId ?? ""}
-                    onChange={(event) => setSelectedProposalId(Number(event.target.value))}
-                  >
-                    {pendingProposals.map((proposal) => (
-                      <option key={proposal.id} value={proposal.id}>
-                        #{proposal.id} {summarizeProposalPayload(proposal.trade_payload)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <button
-                  type="button"
-                  className="secondary"
-                  disabled={haltBlocked}
-                  data-testid="run-preflight-button"
-                  onClick={async () => {
-                    const readiness = await readinessQuery.refetch();
-                    if (!readiness.data?.ready || haltBlocked) {
-                      setExecutionPhase("preflight_blocked");
-                      const blockReason = haltReason || readiness.data?.last_error || "Execution blocked by readiness checks.";
-                      setExecutionMessage(blockReason);
-                      pushToast("warn", blockReason);
-                      addAuditEntry("user", "preflight_blocked", "warn", blockReason);
-                      return;
-                    }
-                    setExecutionPhase("ready");
-                    setExecutionMessage("Preflight passed. Ready to execute.");
-                    pushToast("ok", "Preflight passed");
-                    addAuditEntry("user", "preflight_pass", "ok", "Manual preflight pass");
-                  }}
-                >
-                  Run Preflight
-                </button>
-                <button
-                  type="button"
-                  data-testid="execute-trade-button"
-                  disabled={
-                    executeBlockedByGuard ||
-                    !selectedProposalId ||
-                    approveMutation.isPending ||
-                    executionPhase === "executing"
-                  }
-                  onClick={openExecuteModal}
-                >
-                  {executionPhase === "executing" ? "Executing..." : "Execute Trade"}
-                </button>
-              </div>
-              {mode === "confirmation" && (
-                <label className="row" style={{ marginTop: 4 }}>
-                  <input
-                    type="checkbox"
-                    data-testid="execute-confirm-checkbox"
-                    checked={executeConfirmed}
-                    onChange={(event) => setExecuteConfirmed(event.target.checked)}
-                  />
-                  <span className="muted">I confirm this trade execution</span>
-                </label>
+              {pendingProposals.length > 0 ? (
+                <>
+                  <div className="row" style={{ marginTop: 8 }}>
+                    <label>
+                      Proposal
+                      <select
+                        style={{ marginLeft: 8 }}
+                        value={selectedProposalId ?? ""}
+                        onChange={(event) => setSelectedProposalId(Number(event.target.value))}
+                      >
+                        {pendingProposals.map((proposal) => (
+                          <option key={proposal.id} value={proposal.id}>
+                            #{proposal.id} {summarizeProposalPayload(proposal.trade_payload)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <button
+                      type="button"
+                      className="secondary"
+                      disabled={haltBlocked}
+                      data-testid="run-preflight-button"
+                      onClick={async () => {
+                        const readiness = await readinessQuery.refetch();
+                        if (!readiness.data?.ready || haltBlocked) {
+                          setExecutionPhase("preflight_blocked");
+                          const blockReason = haltReason || readiness.data?.last_error || "Execution blocked by readiness checks.";
+                          setExecutionMessage(blockReason);
+                          pushToast("warn", blockReason);
+                          addAuditEntry("user", "preflight_blocked", "warn", blockReason);
+                          return;
+                        }
+                        setExecutionPhase("ready");
+                        setExecutionMessage("Preflight passed. Ready to execute.");
+                        pushToast("ok", "Preflight passed");
+                        addAuditEntry("user", "preflight_pass", "ok", "Manual preflight pass");
+                      }}
+                    >
+                      Run Preflight
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="execute-trade-button"
+                      disabled={
+                        executeBlockedByGuard ||
+                        !selectedProposalId ||
+                        approveMutation.isPending ||
+                        executionPhase === "executing"
+                      }
+                      onClick={openExecuteModal}
+                    >
+                      {executionPhase === "executing" ? "Executing..." : "Execute Trade"}
+                    </button>
+                  </div>
+                  {mode === "confirmation" && (
+                    <label className="row" style={{ marginTop: 4 }}>
+                      <input
+                        type="checkbox"
+                        data-testid="execute-confirm-checkbox"
+                        checked={executeConfirmed}
+                        onChange={(event) => setExecuteConfirmed(event.target.checked)}
+                      />
+                      <span className="muted">I confirm this trade execution</span>
+                    </label>
+                  )}
+                </>
+              ) : (
+                <p className="muted" style={{ marginTop: 8 }}>
+                  No pending proposals. Showing latest execution lifecycle.
+                </p>
               )}
               <div className="row" style={{ marginTop: 8 }}>
                 <span className="muted">Preflight: {executionBlocked ? "blocked" : "pass"}</span>

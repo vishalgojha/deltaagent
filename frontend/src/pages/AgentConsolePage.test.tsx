@@ -162,6 +162,38 @@ describe("AgentConsolePage", () => {
     });
   }, 10000);
 
+  it("keeps polling source visible when approval succeeds before trade row appears", async () => {
+    const user = userEvent.setup();
+    vi.mocked(endpoints.getProposals)
+      .mockResolvedValueOnce([
+        {
+          id: 304,
+          timestamp: "2026-02-17T00:00:00Z",
+          trade_payload: { action: "SELL", symbol: "ES", qty: 1 },
+          agent_reasoning: "execute pending trade test",
+          status: "pending",
+          resolved_at: null
+        }
+      ])
+      .mockResolvedValue([]);
+    vi.mocked(endpoints.approveProposal).mockResolvedValue({ status: "approved" });
+    vi.mocked(endpoints.getTrades).mockResolvedValue([]);
+
+    renderWithProviders(<AgentConsolePage clientId="client-1" token="token-1" />);
+    await screen.findByTestId("execute-trade-button");
+
+    await user.click(await screen.findByTestId("execute-confirm-checkbox"));
+    await user.click(await screen.findByTestId("execute-trade-button"));
+    expect(await screen.findByRole("dialog", { name: "Trade Ticket Confirmation" })).toBeInTheDocument();
+    await user.click(screen.getByTestId("trade-ticket-confirm-button"));
+
+    await waitFor(() => {
+      expect(vi.mocked(endpoints.approveProposal)).toHaveBeenCalledWith("client-1", 304);
+    });
+    expect(await screen.findByText("Source: polling")).toBeInTheDocument();
+    expect(await screen.findByText("Order approved. Waiting for first trade status update...")).toBeInTheDocument();
+  });
+
   it("blocks execute when confirmation checkbox is not checked", async () => {
     const user = userEvent.setup();
     vi.mocked(endpoints.getProposals).mockResolvedValueOnce([
