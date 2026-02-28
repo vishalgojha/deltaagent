@@ -62,6 +62,11 @@ app.include_router(reference.router)
 app.include_router(websocket.router)
 
 
+@app.get("/")
+async def root() -> dict:
+    return {"status": "ok", "service": "trading-agent"}
+
+
 @app.get("/health")
 async def health() -> dict:
     return {"status": "ok"}
