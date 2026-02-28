@@ -1,38 +1,54 @@
 # START HERE: HANDOFF
 
-Last updated: 2026-02-27
+Last updated: 2026-02-28
 
 ## 1) Current State (Fast)
 - Branch: `main`
 - Sync status: `main...origin/main`
 - Local status: clean
-- Latest CI: Run `#86` succeeded (`c32cb65`)
-  - URL: `https://github.com/vishalgojha/deltaagent/actions/runs/22487816674`
+- Latest CI: Run `#91` succeeded (`2282218`)
+  - URL: `https://github.com/vishalgojha/deltaagent/actions/runs/22515797674`
 
 ## 2) What Was Completed Most Recently
-### CI stability and release hardening fixes (runs #83 -> #86)
-- Fixed Playwright screenshot spec in ESM context (`__dirname` resolution).
-- Stabilized smoke reject action selector to avoid flaky class-based selection.
-- Kept execution source visible after proposal approval path.
-- Fixed strict env validation failure in CI by quoting `ENCRYPTION_KEY`.
-- Fixed release migration path in CI by invoking Alembic as module:
-  - `python -m alembic -c backend/db/alembic.ini upgrade head`
-- Fixed `CORS_ORIGINS` env contract in CI (JSON list form) to satisfy settings parsing in migration context.
+### Docs + test infra + CI hardening
+- Captured and committed latest product screenshots under `docs/screenshots`.
+- Made Playwright backend startup robust on Windows by auto-resolving repo venv Python.
+- Stabilized e2e selectors and lifecycle assertions so smoke/spec flows are less flaky.
+- Hardened CI env contract:
+  - quoted `ENCRYPTION_KEY`
+  - moved release migration command to module invocation
+  - set CI `CORS_ORIGINS` as JSON list string
 
-### Files touched in latest CI hardening
-- `frontend/e2e/screenshots.spec.ts`
-- `frontend/e2e/smoke.spec.ts`
-- `.github/workflows/ci.yml`
+### Railway deployment hardening (same session)
+- Fixed Railway startup command behavior and DB URL compatibility:
+  - added `scripts/start_server.py` to read `PORT` from env and run Uvicorn
+  - updated `railway.json` start command to `python scripts/start_server.py`
+  - updated `Dockerfile` `CMD` to `python scripts/start_server.py`
+  - normalized `DATABASE_URL` in settings:
+    - `postgres://` -> `postgresql+asyncpg://`
+    - `postgresql://` -> `postgresql+asyncpg://`
+    - `postgresql+psycopg2://` -> `postgresql+asyncpg://`
+- Added API root endpoint:
+  - `GET /` now returns `{"status":"ok","service":"trading-agent"}` instead of 404.
+
+### Live deployment observation
+- Live URL tested: `https://deltaagent-frontend.up.railway.app`
+  - `/health` -> `200`
+  - `/openapi.json` -> `200`
+  - `/health/ready` -> `503`
+- Readiness failure detail:
+  - `redis client not initialized`
+  - database check is healthy.
 
 ## 3) Most Recent Commits (Newest First)
+- `2282218` Add root endpoint for base URL health response
+- `aeaf306` Fix startup launcher import path for container runtime
+- `b3dfcef` Fix Railway port handling with Python startup entrypoint
+- `141a80b` Fix Railway startup command and normalize Postgres DB URLs
+- `470dc94` Update handoff and capture latest product screenshots
 - `c32cb65` Use JSON CORS origins in release hardening CI env
 - `e5e13ea` Run Alembic via python module in release hardening CI
 - `0df3f94` Fix CI env key quoting and stabilize Playwright smoke specs
-- `06b8a82` Keep execution source visible after proposal approval
-- `5aec067` Add execution auto-remediation policies with dashboard controls
-- `90f1e48` feat: add alert actions, runbook guidance, and release hardening gates
-- `e48215b` feat: add execution quality monitoring, fill idempotency, and safer defaults
-- `9efe7f8` test: harden frontend suite for storage and execution assertions
 
 ## 4) Run Locally
 ### Easiest
@@ -76,22 +92,33 @@ python scripts/post_deploy_smoke.py --base-url https://YOUR_BACKEND_URL --requir
 - `ENCRYPTION_KEY` must be exactly 32 characters.
 - `CORS_ORIGINS` should be a JSON list string for strict/deploy contexts:
   - example: `["https://your-frontend-domain.com"]`
+- `REDIS_URL` must point to a reachable Redis instance for `/health/ready` to pass.
 - Production/staging must use non-default secrets for:
   - `JWT_SECRET`
   - `ADMIN_API_KEY`
 
 ## 7) Pending
-1. Capture and commit docs screenshots:
-   - run `capture_screenshots.bat`
-   - commit `docs/screenshots/*.png`
-2. Railway deploy:
-   - ensure Railway service vars satisfy the env contract above
-   - deploy backend service from `main`
-   - run post-deploy smoke
-3. Live broker reconnect sanity check (IBKR collision path) in real integration environment.
+1. Fix Railway readiness:
+   - attach/configure Redis service
+   - set backend `REDIS_URL` to Railway Redis URL
+   - redeploy backend
+   - verify `GET /health/ready` returns `200` with `"ready": true`
+2. Confirm Railway backend service start command:
+   - `python scripts/start_server.py`
+   - or leave blank to use Dockerfile `CMD`
+3. Re-run strict smoke:
+   - `python scripts/post_deploy_smoke.py --base-url https://<backend-url> --require-ready`
+4. Verify whether `deltaagent-frontend.up.railway.app` is intentionally backend/API service name.
+5. Optional product follow-up:
+   - run real IBKR reconnect collision sanity in live integration environment.
 
 ## 8) Important Files
 - `00_HANDOFF.md`
+- `scripts/start_server.py`
+- `railway.json`
+- `Dockerfile`
+- `backend/config.py`
+- `backend/main.py`
 - `.github/workflows/ci.yml`
 - `frontend/e2e/screenshots.spec.ts`
 - `frontend/e2e/smoke.spec.ts`
