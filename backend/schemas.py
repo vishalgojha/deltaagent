@@ -43,6 +43,25 @@ class ParametersUpdateRequest(BaseModel):
     risk_parameters: dict
 
 
+class LlmCredentialsUpdateRequest(BaseModel):
+    openai_api_key: str | None = None
+    anthropic_api_key: str | None = None
+    openrouter_api_key: str | None = None
+    xai_api_key: str | None = None
+
+
+class LlmProviderStatusOut(BaseModel):
+    configured: bool
+    source: Literal["client", "env", "none"]
+
+
+class LlmCredentialsStatusOut(BaseModel):
+    openai: LlmProviderStatusOut
+    anthropic: LlmProviderStatusOut
+    openrouter: LlmProviderStatusOut
+    xai: LlmProviderStatusOut
+
+
 class ChatRequest(BaseModel):
     message: str
 

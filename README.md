@@ -54,15 +54,31 @@ Minimum local safe setup:
 - `ADMIN_API_KEY=<strong-random-secret-for-admin-endpoints>`
 - `AUTO_CREATE_TABLES=true` (dev only)
 - `CORS_ORIGINS=http://localhost:3000,http://localhost:5173`
-- `DECISION_BACKEND_DEFAULT=ollama|openrouter|deterministic|anthropic`
+- `APP_ENV=development` (set `production` in deploy environments)
+- `CORS_ORIGIN_REGEX=` (leave empty in production; dev auto-allows localhost/127.0.0.1 ports)
+- `DECISION_BACKEND_DEFAULT=ollama|openai|openrouter|anthropic|xai|deterministic`
+- `OPENAI_API_KEY=<your-openai-key>` (required for OpenAI mode)
+- `OPENAI_MODEL=gpt-4o-mini`
 - `OPENROUTER_API_KEY=<your-openrouter-key>` (required for OpenRouter mode)
 - `OPENROUTER_MODEL=openai/gpt-4o-mini`
+- `ANTHROPIC_API_KEY=<your-anthropic-key>` (required for Anthropic mode)
+- `XAI_API_KEY=<your-xai-key>` (required for xAI mode)
+- `XAI_MODEL=grok-2-latest`
 
 ## Run Locally
 
 ```bash
-pip install -r requirements.txt
-uvicorn backend.main:app --reload
+python -m venv .venv
+# Windows PowerShell:
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m uvicorn backend.main:app --reload
+```
+
+Windows note:
+- If `python` or `py` resolves to `...\WindowsApps\python.exe`, install Python 3.11 from python.org and run:
+```powershell
+py -3.11 -m venv .venv
 ```
 
 ## Run With Docker

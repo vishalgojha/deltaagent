@@ -96,7 +96,11 @@ def build_parser() -> argparse.ArgumentParser:
     login.set_defaults(func=cmd_login)
 
     set_backend = sub.add_parser("set-backend", help="Set decision backend for a client")
-    set_backend.add_argument("--backend", choices=["deterministic", "ollama", "openrouter", "anthropic"], required=True)
+    set_backend.add_argument(
+        "--backend",
+        choices=["deterministic", "ollama", "openai", "openrouter", "anthropic", "xai"],
+        required=True,
+    )
     set_backend.add_argument("--token")
     set_backend.add_argument("--client-id")
     set_backend.set_defaults(func=cmd_set_backend)

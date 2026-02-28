@@ -6,6 +6,7 @@ import {
   connectBroker,
   getAdminEmergencyHalt,
   getHealth,
+  getLlmCredentialsStatus,
   getReadiness,
   getRiskParameters,
   getTrades,
@@ -15,11 +16,12 @@ import {
   sendChat,
   setAdminEmergencyHalt,
   setMode,
-  updateAgentParameters
+  updateAgentParameters,
+  updateLlmCredentials
 } from "../api/endpoints";
 import { getApiBaseUrl } from "../api/client";
 import { clearAdminSessionToken, getAdminSessionToken, saveAdminSessionToken } from "../store/adminSession";
-import type { ChatResponse, Trade } from "../types";
+import type { ChatResponse, DecisionBackend, Trade } from "../types";
 import { useAgentStream } from "../hooks/useAgentStream";
 
 type Props = { clientId: string; token: string; isHalted?: boolean; haltReason?: string };
@@ -175,7 +177,13 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
   const queryClient = useQueryClient();
   const [message, setMessage] = useState("");
   const [mode, setModeUi] = useState<"confirmation" | "autonomous">("confirmation");
-  const [decisionBackend, setDecisionBackendUi] = useState<"ollama" | "deterministic" | "openrouter">("ollama");
+  const [decisionBackend, setDecisionBackendUi] = useState<DecisionBackend>("ollama");
+  const [openaiApiKeyInput, setOpenaiApiKeyInput] = useState("");
+  const [anthropicApiKeyInput, setAnthropicApiKeyInput] = useState("");
+  const [openrouterApiKeyInput, setOpenrouterApiKeyInput] = useState("");
+  const [xaiApiKeyInput, setXaiApiKeyInput] = useState("");
+  const [llmKeyError, setLlmKeyError] = useState("");
+  const [llmKeySuccess, setLlmKeySuccess] = useState("");
   const [runs, setRuns] = useState<TimelineRun[]>([]);
   const [expandedToolItems, setExpandedToolItems] = useState<Record<string, boolean>>({});
   const [expandedWorkflowSteps, setExpandedWorkflowSteps] = useState<Record<string, boolean>>({});
@@ -258,6 +266,11 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
   const parametersQuery = useQuery({
     queryKey: ["agent-parameters", clientId],
     queryFn: () => getRiskParameters(clientId)
+  });
+
+  const llmCredentialsQuery = useQuery({
+    queryKey: ["agent-llm-credentials", clientId],
+    queryFn: () => getLlmCredentialsStatus(clientId)
   });
 
   const adminHaltQuery = useQuery({
@@ -400,7 +413,14 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
 
   useEffect(() => {
     const backendRaw = (parametersQuery.data?.risk_parameters as Record<string, unknown> | undefined)?.decision_backend;
-    if (backendRaw === "deterministic" || backendRaw === "ollama" || backendRaw === "openrouter") {
+    if (
+      backendRaw === "deterministic" ||
+      backendRaw === "ollama" ||
+      backendRaw === "openai" ||
+      backendRaw === "openrouter" ||
+      backendRaw === "anthropic" ||
+      backendRaw === "xai"
+    ) {
       setDecisionBackendUi(backendRaw);
       return;
     }
@@ -433,10 +453,22 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
   });
 
   const decisionBackendMutation = useMutation({
-    mutationFn: (nextBackend: "ollama" | "deterministic" | "openrouter") =>
+    mutationFn: (nextBackend: DecisionBackend) =>
       updateAgentParameters(clientId, { decision_backend: nextBackend }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["agent-parameters", clientId] });
+    }
+  });
+
+  const llmCredentialsMutation = useMutation({
+    mutationFn: (payload: {
+      openai_api_key?: string;
+      anthropic_api_key?: string;
+      openrouter_api_key?: string;
+      xai_api_key?: string;
+    }) => updateLlmCredentials(clientId, payload),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["agent-llm-credentials", clientId] });
     }
   });
 
@@ -762,13 +794,44 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
     }
   }
 
-  async function onDecisionBackendChange(nextBackend: "ollama" | "deterministic" | "openrouter") {
+  async function onDecisionBackendChange(nextBackend: DecisionBackend) {
     setError("");
     try {
       await decisionBackendMutation.mutateAsync(nextBackend);
       setDecisionBackendUi(nextBackend);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Engine update failed");
+    }
+  }
+
+  async function onSaveLlmKeys(event: FormEvent) {
+    event.preventDefault();
+    setLlmKeyError("");
+    setLlmKeySuccess("");
+    const payload: {
+      openai_api_key?: string;
+      anthropic_api_key?: string;
+      openrouter_api_key?: string;
+      xai_api_key?: string;
+    } = {};
+    if (openaiApiKeyInput.trim()) payload.openai_api_key = openaiApiKeyInput.trim();
+    if (anthropicApiKeyInput.trim()) payload.anthropic_api_key = anthropicApiKeyInput.trim();
+    if (openrouterApiKeyInput.trim()) payload.openrouter_api_key = openrouterApiKeyInput.trim();
+    if (xaiApiKeyInput.trim()) payload.xai_api_key = xaiApiKeyInput.trim();
+
+    if (Object.keys(payload).length === 0) {
+      setLlmKeyError("Enter at least one API key to save.");
+      return;
+    }
+    try {
+      await llmCredentialsMutation.mutateAsync(payload);
+      setOpenaiApiKeyInput("");
+      setAnthropicApiKeyInput("");
+      setOpenrouterApiKeyInput("");
+      setXaiApiKeyInput("");
+      setLlmKeySuccess("API keys saved securely for this client.");
+    } catch (err) {
+      setLlmKeyError(err instanceof Error ? err.message : "Failed to save API keys.");
     }
   }
 
@@ -1569,10 +1632,13 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
             <select
               style={{ marginLeft: 8 }}
               value={decisionBackend}
-              onChange={(e) => onDecisionBackendChange(e.target.value as "ollama" | "deterministic" | "openrouter")}
+              onChange={(e) => onDecisionBackendChange(e.target.value as DecisionBackend)}
             >
               <option value="ollama">Ollama (Default)</option>
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Anthropic</option>
               <option value="openrouter">OpenRouter</option>
+              <option value="xai">xAI</option>
               <option value="deterministic">Deterministic Logic</option>
             </select>
           </label>
@@ -1581,6 +1647,72 @@ export function AgentConsolePage({ clientId, token, isHalted = false, haltReason
             <input type="checkbox" checked={showDebugStream} onChange={(e) => setShowDebugStream(e.target.checked)} />
             Debug stream
           </label>
+        </div>
+        <div className="card" style={{ marginTop: 10, marginBottom: 0 }}>
+          <p style={{ margin: "0 0 6px 0", fontWeight: 700 }}>LLM API Keys (Client Scoped)</p>
+          <p className="muted" style={{ margin: 0 }}>
+            Keys are encrypted at rest. Enter only the providers you want to update.
+          </p>
+          <form className="grid grid-2" style={{ marginTop: 10 }} onSubmit={onSaveLlmKeys}>
+            <label className="grid">
+              OpenAI API Key
+              <input
+                type="password"
+                value={openaiApiKeyInput}
+                onChange={(e) => setOpenaiApiKeyInput(e.target.value)}
+                placeholder="sk-..."
+                autoComplete="off"
+              />
+            </label>
+            <label className="grid">
+              Anthropic API Key
+              <input
+                type="password"
+                value={anthropicApiKeyInput}
+                onChange={(e) => setAnthropicApiKeyInput(e.target.value)}
+                placeholder="sk-ant-..."
+                autoComplete="off"
+              />
+            </label>
+            <label className="grid">
+              OpenRouter API Key
+              <input
+                type="password"
+                value={openrouterApiKeyInput}
+                onChange={(e) => setOpenrouterApiKeyInput(e.target.value)}
+                placeholder="sk-or-..."
+                autoComplete="off"
+              />
+            </label>
+            <label className="grid">
+              xAI API Key
+              <input
+                type="password"
+                value={xaiApiKeyInput}
+                onChange={(e) => setXaiApiKeyInput(e.target.value)}
+                placeholder="xai-..."
+                autoComplete="off"
+              />
+            </label>
+            <div className="row" style={{ gridColumn: "1 / -1" }}>
+              <button type="submit" disabled={llmCredentialsMutation.isPending}>
+                {llmCredentialsMutation.isPending ? "Saving..." : "Save API Keys"}
+              </button>
+              <span className="muted">
+                OpenAI: {llmCredentialsQuery.data?.openai.configured ? llmCredentialsQuery.data.openai.source : "not set"} |{" "}
+                Anthropic: {llmCredentialsQuery.data?.anthropic.configured ? llmCredentialsQuery.data.anthropic.source : "not set"} |{" "}
+                OpenRouter: {llmCredentialsQuery.data?.openrouter.configured ? llmCredentialsQuery.data.openrouter.source : "not set"} |{" "}
+                xAI: {llmCredentialsQuery.data?.xai.configured ? llmCredentialsQuery.data.xai.source : "not set"}
+              </span>
+            </div>
+          </form>
+          {llmKeyError && <p style={{ color: "#991b1b", marginTop: 8 }}>{llmKeyError}</p>}
+          {llmKeySuccess && <p style={{ color: "#166534", marginTop: 8 }}>{llmKeySuccess}</p>}
+          {llmCredentialsQuery.error && (
+            <p style={{ color: "#991b1b", marginTop: 8 }}>
+              {llmCredentialsQuery.error instanceof Error ? llmCredentialsQuery.error.message : "Failed to load API key status"}
+            </p>
+          )}
         </div>
         <div className="card" style={{ marginTop: 10, marginBottom: 0 }}>
           <p style={{ margin: "0 0 6px 0", fontWeight: 700 }}>System Health</p>

@@ -62,7 +62,10 @@ def validate(target: str, env_file_values: dict[str, str]) -> ValidationResult:
     auto_create_tables = (value_for("AUTO_CREATE_TABLES", env_file_values) or "false").lower() == "true"
     use_mock_broker = (value_for("USE_MOCK_BROKER", env_file_values) or "true").lower() == "true"
     decision_backend = (value_for("DECISION_BACKEND_DEFAULT", env_file_values) or "ollama").lower()
+    openai_api_key = value_for("OPENAI_API_KEY", env_file_values) or ""
     anthropic_api_key = value_for("ANTHROPIC_API_KEY", env_file_values) or ""
+    openrouter_api_key = value_for("OPENROUTER_API_KEY", env_file_values) or ""
+    xai_api_key = value_for("XAI_API_KEY", env_file_values) or ""
 
     if database_url and not is_url(database_url):
         errors.append("DATABASE_URL must be a valid URL.")
@@ -78,6 +81,12 @@ def validate(target: str, env_file_values: dict[str, str]) -> ValidationResult:
 
     if decision_backend == "anthropic" and not anthropic_api_key:
         errors.append("ANTHROPIC_API_KEY is required when DECISION_BACKEND_DEFAULT=anthropic.")
+    if decision_backend == "openrouter" and not openrouter_api_key:
+        errors.append("OPENROUTER_API_KEY is required when DECISION_BACKEND_DEFAULT=openrouter.")
+    if decision_backend == "openai" and not openai_api_key:
+        errors.append("OPENAI_API_KEY is required when DECISION_BACKEND_DEFAULT=openai.")
+    if decision_backend == "xai" and not xai_api_key:
+        errors.append("XAI_API_KEY is required when DECISION_BACKEND_DEFAULT=xai.")
 
     if not use_mock_broker:
         ib_host = value_for("IBKR_GATEWAY_HOST", env_file_values)

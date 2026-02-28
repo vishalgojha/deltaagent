@@ -1,6 +1,8 @@
 import uuid
+import calendar
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+import re
 from typing import Any
 
 from sqlalchemy import desc, select
@@ -153,10 +155,12 @@ class StrategyTemplateService:
 
         strikes = sorted({float(row["strike"]) for row in expiry_rows if row.get("strike") is not None})
         upper_width = template.wing_width if template.strategy_type != "broken_wing_butterfly" else template.wing_width * 1.5
-        lower_strike = self._nearest_strike(strikes, center_strike - template.wing_width)
-        upper_strike = self._nearest_strike(strikes, center_strike + upper_width)
-        if lower_strike == center_strike or upper_strike == center_strike:
-            raise ValueError("Unable to construct butterfly wings from current chain")
+        lower_strike, upper_strike = self._select_wing_strikes(
+            strikes=strikes,
+            center_strike=center_strike,
+            lower_width=template.wing_width,
+            upper_width=upper_width,
+        )
 
         lower_row = self._row_for_strike(expiry_rows, lower_strike)
         upper_row = self._row_for_strike(expiry_rows, upper_strike)
@@ -460,27 +464,83 @@ class StrategyTemplateService:
         return min(strikes, key=lambda x: abs(x - target))
 
     @staticmethod
+    def _select_wing_strikes(
+        strikes: list[float],
+        center_strike: float,
+        lower_width: float,
+        upper_width: float,
+    ) -> tuple[float, float]:
+        lower_candidates = [strike for strike in strikes if strike < center_strike]
+        upper_candidates = [strike for strike in strikes if strike > center_strike]
+        if not lower_candidates or not upper_candidates:
+            low = min(strikes) if strikes else center_strike
+            high = max(strikes) if strikes else center_strike
+            raise ValueError(
+                "Unable to construct butterfly wings from current chain. "
+                f"Need strikes both below and above center {center_strike}, available range is {low}-{high}."
+            )
+
+        lower_target = center_strike - max(lower_width, 0.0)
+        upper_target = center_strike + max(upper_width, 0.0)
+        lower_strike = min(lower_candidates, key=lambda x: abs(x - lower_target))
+        upper_strike = min(upper_candidates, key=lambda x: abs(x - upper_target))
+        return lower_strike, upper_strike
+
+    @staticmethod
     def _select_expiry(chain_rows: list[dict[str, Any]], dte_min: int, dte_max: int) -> tuple[str, int]:
         expiry_map: dict[str, int] = {}
         now = datetime.now(UTC).date()
         for row in chain_rows:
-            exp = str(row["expiry"])
+            exp = str(row["expiry"]).strip()
             if exp in expiry_map:
                 continue
-            try:
-                if "-" in exp:
-                    exp_date = datetime.strptime(exp, "%Y-%m-%d").date()
-                else:
-                    exp_date = datetime.strptime(exp, "%Y%m%d").date()
-            except ValueError:
+            exp_date = StrategyTemplateService._parse_expiry_date(exp)
+            if exp_date is None:
                 continue
             dte = (exp_date - now).days
             expiry_map[exp] = dte
+        if not expiry_map:
+            raise ValueError("No parseable expiry values in options chain")
         allowed = [(exp, dte) for exp, dte in expiry_map.items() if dte_min <= dte <= dte_max]
         if not allowed:
-            raise ValueError("No expiry matched configured DTE range")
+            available = ", ".join(
+                [f"{exp} ({dte}d)" for exp, dte in sorted(expiry_map.items(), key=lambda item: item[1])[:8]]
+            )
+            raise ValueError(
+                f"No expiry matched configured DTE range {dte_min}-{dte_max}. Available expiries: {available}"
+            )
         midpoint = (dte_min + dte_max) / 2
         return min(allowed, key=lambda item: abs(item[1] - midpoint))
+
+    @staticmethod
+    def _parse_expiry_date(raw_expiry: str) -> date | None:
+        raw = raw_expiry.strip()
+        if not raw:
+            return None
+
+        for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%Y%m%d"):
+            try:
+                return datetime.strptime(raw, fmt).date()
+            except ValueError:
+                continue
+
+        eight_digit = re.search(r"(\d{8})", raw)
+        if eight_digit:
+            try:
+                return datetime.strptime(eight_digit.group(1), "%Y%m%d").date()
+            except ValueError:
+                pass
+
+        six_digit = re.search(r"(\d{6})", raw)
+        if six_digit:
+            token = six_digit.group(1)
+            year = int(token[:4])
+            month = int(token[4:6])
+            if 1 <= month <= 12:
+                last_day = calendar.monthrange(year, month)[1]
+                return date(year, month, last_day)
+
+        return None
 
     @staticmethod
     def _extract_mid(row: dict[str, Any], side: str) -> float:

@@ -37,12 +37,24 @@ class AgentManager:
             await self._disconnect_broker(existing)
             self._brokers.pop(client_id, None)
 
+        llm_credentials: dict[str, str] = {}
+        sanitized_credentials = broker_credentials
+        if isinstance(broker_credentials, dict):
+            sanitized_credentials = dict(broker_credentials)
+            raw_llm = sanitized_credentials.pop("llm_credentials", None)
+            if isinstance(raw_llm, dict):
+                llm_credentials = {
+                    str(key): str(value)
+                    for key, value in raw_llm.items()
+                    if isinstance(value, str) and value.strip()
+                }
+
         broker = self._brokers.get(client_id)
         if broker is None:
             broker = build_broker(
                 broker_type=broker_type,
                 use_mock=get_settings().use_mock_broker,
-                credentials=broker_credentials,
+                credentials=sanitized_credentials,
             )
             await broker.connect()
             self._brokers[client_id] = broker
@@ -53,6 +65,7 @@ class AgentManager:
             risk_governor=self.risk_governor,
             emergency_halt=self.emergency_halt,
             redis_client=self.redis_client,
+            llm_credentials=llm_credentials,
         )
 
     async def shutdown(self) -> None:

@@ -1,8 +1,16 @@
 from functools import lru_cache
 import json
-from typing import Any
-from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import Annotated, Any
+from pydantic import Field, field_validator, model_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+LOCAL_CORS_DEFAULTS = [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:5173",
+]
+LOCAL_CORS_REGEX = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
 
 
 class Settings(BaseSettings):
@@ -10,8 +18,12 @@ class Settings(BaseSettings):
 
     app_name: str = "trading-agent"
     api_prefix: str = "/"
+    app_env: str = Field(default="development", alias="APP_ENV")
 
     anthropic_api_key: str | None = Field(default=None, alias="ANTHROPIC_API_KEY")
+    openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
+    openai_base_url: str = Field(default="https://api.openai.com/v1", alias="OPENAI_BASE_URL")
+    openai_model: str = Field(default="gpt-4o-mini", alias="OPENAI_MODEL")
     database_url: str = Field(
         default="sqlite+aiosqlite:///./trading.db",
         alias="DATABASE_URL",
@@ -46,9 +58,27 @@ class Settings(BaseSettings):
     openrouter_model: str = Field(default="openai/gpt-4o-mini", alias="OPENROUTER_MODEL")
     openrouter_site_url: str | None = Field(default=None, alias="OPENROUTER_SITE_URL")
     openrouter_app_name: str | None = Field(default="deltaagent", alias="OPENROUTER_APP_NAME")
+    xai_api_key: str | None = Field(default=None, alias="XAI_API_KEY")
+    xai_base_url: str = Field(default="https://api.x.ai/v1", alias="XAI_BASE_URL")
+    xai_model: str = Field(default="grok-2-latest", alias="XAI_MODEL")
     admin_api_key: str | None = Field(default=None, alias="ADMIN_API_KEY")
     auto_create_tables: bool = Field(default=True, alias="AUTO_CREATE_TABLES")
-    cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"], alias="CORS_ORIGINS")
+    cors_origins: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: list(LOCAL_CORS_DEFAULTS),
+        alias="CORS_ORIGINS",
+    )
+    cors_origin_regex: str | None = Field(
+        default=None,
+        alias="CORS_ORIGIN_REGEX",
+    )
+
+    @field_validator("app_env", mode="before")
+    @classmethod
+    def _normalize_app_env(cls, value: Any) -> str:
+        if isinstance(value, str):
+            raw = value.strip().lower()
+            return raw or "development"
+        return "development"
 
     @field_validator("database_url", mode="before")
     @classmethod
@@ -79,7 +109,34 @@ class Settings(BaseSettings):
                 except Exception:  # noqa: BLE001
                     pass
             return [item.strip() for item in value.split(",") if item.strip()]
-        return ["http://localhost:3000"]
+        return list(LOCAL_CORS_DEFAULTS)
+
+    @field_validator("cors_origin_regex", mode="before")
+    @classmethod
+    def _normalize_cors_origin_regex(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            raw = value.strip()
+            return raw or None
+        return None
+
+    @model_validator(mode="after")
+    def _finalize_cors(self) -> "Settings":
+        is_dev = self.app_env in {"dev", "development", "local"}
+        if is_dev:
+            if not self.cors_origins:
+                self.cors_origins = list(LOCAL_CORS_DEFAULTS)
+            if not self.cors_origin_regex:
+                self.cors_origin_regex = LOCAL_CORS_REGEX
+            return self
+
+        if not self.cors_origins:
+            raise ValueError("CORS_ORIGINS must be set outside development.")
+
+        if self.cors_origin_regex and "localhost" in self.cors_origin_regex:
+            self.cors_origin_regex = None
+        return self
 
 
 @lru_cache

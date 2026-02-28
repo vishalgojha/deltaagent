@@ -9,6 +9,7 @@ import type {
   EmergencyHaltStatus,
   ExecutionIncidentNote,
   ExecutionQuality,
+  LlmCredentialsStatus,
   LoginResponse,
   Position,
   Proposal,
@@ -190,6 +191,25 @@ export function setMode(clientId: string, mode: "confirmation" | "autonomous") {
   return api<Record<string, unknown>>(`/clients/${clientId}/agent/mode`, {
     method: "POST",
     body: JSON.stringify({ mode })
+  });
+}
+
+export function getLlmCredentialsStatus(clientId: string) {
+  return api<LlmCredentialsStatus>(`/clients/${clientId}/agent/llm-credentials`);
+}
+
+export function updateLlmCredentials(
+  clientId: string,
+  payload: {
+    openai_api_key?: string;
+    anthropic_api_key?: string;
+    openrouter_api_key?: string;
+    xai_api_key?: string;
+  }
+) {
+  return api<LlmCredentialsStatus>(`/clients/${clientId}/agent/llm-credentials`, {
+    method: "POST",
+    body: JSON.stringify(payload)
   });
 }
 

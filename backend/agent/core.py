@@ -36,6 +36,7 @@ class TradingAgent:
         risk_governor: RiskGovernor,
         emergency_halt: EmergencyHaltController | None = None,
         redis_client: Redis | None = None,
+        llm_credentials: dict[str, str] | None = None,
     ) -> None:
         self.broker = broker
         self.db = db
@@ -46,6 +47,7 @@ class TradingAgent:
         self.tools = AgentTools(broker=broker, db=db)
         self.settings = get_settings()
         self.strategy_registry = StrategyRegistry()
+        self.llm_credentials = dict(llm_credentials or {})
 
     async def chat(self, client_id: uuid.UUID, message: str) -> dict[str, Any]:
         context = self.memory_store.get_or_create(client_id)
@@ -517,6 +519,20 @@ class TradingAgent:
             scored.sort(reverse=True)
             return scored[0][1]
 
+        manual_aliases = {
+            "esmini": "ES",
+            "e-mini": "ES",
+            "es mini": "ES",
+            "emini": "ES",
+            "nqmini": "NQ",
+            "nq mini": "NQ",
+            "ymmini": "YM",
+            "ym mini": "YM",
+        }
+        for alias, symbol in manual_aliases.items():
+            if self._contains_term(lower_message, alias):
+                return symbol
+
         # Fallback when catalog is not seeded yet: only explicit symbol mentions.
         for explicit in ("ES", "NQ", "SI", "GC", "CL", "RTY", "YM"):
             if self._contains_term(lower_message, explicit.lower()):
@@ -591,6 +607,19 @@ class TradingAgent:
                 if fallback_trade is not None and not self._is_executable_trade(ollama_response.get("trade")):
                     ollama_response["trade"] = fallback_trade
                 return ollama_response
+        elif backend_choice == "openai":
+            openai_response = await self._call_openai(
+                mode=mode,
+                message=message,
+                context=context,
+                fallback_reasoning=fallback_reasoning,
+                fallback_trade=fallback_trade,
+                tool_trace_id=tool_trace_id,
+            )
+            if openai_response is not None:
+                if fallback_trade is not None and not self._is_executable_trade(openai_response.get("trade")):
+                    openai_response["trade"] = fallback_trade
+                return openai_response
         elif backend_choice == "openrouter":
             openrouter_response = await self._call_openrouter(
                 mode=mode,
@@ -604,8 +633,22 @@ class TradingAgent:
                 if fallback_trade is not None and not self._is_executable_trade(openrouter_response.get("trade")):
                     openrouter_response["trade"] = fallback_trade
                 return openrouter_response
+        elif backend_choice == "xai":
+            xai_response = await self._call_xai(
+                mode=mode,
+                message=message,
+                context=context,
+                fallback_reasoning=fallback_reasoning,
+                fallback_trade=fallback_trade,
+                tool_trace_id=tool_trace_id,
+            )
+            if xai_response is not None:
+                if fallback_trade is not None and not self._is_executable_trade(xai_response.get("trade")):
+                    xai_response["trade"] = fallback_trade
+                return xai_response
 
-        if not self.settings.anthropic_api_key:
+        anthropic_api_key = self._resolve_llm_api_key("anthropic", self.settings.anthropic_api_key)
+        if not anthropic_api_key:
             return {
                 "reasoning": fallback_reasoning,
                 "trade": fallback_trade,
@@ -617,7 +660,7 @@ class TradingAgent:
         try:
             from anthropic import AsyncAnthropic  # type: ignore
 
-            client = AsyncAnthropic(api_key=self.settings.anthropic_api_key)
+            client = AsyncAnthropic(api_key=anthropic_api_key)
             prompt = CONFIRMATION_PROMPT if mode == "confirmation" else AUTONOMOUS_PROMPT
             messages: list[dict[str, Any]] = [
                 {
@@ -727,7 +770,7 @@ class TradingAgent:
 
     def _resolve_decision_backend(self, parameters: dict[str, Any] | None) -> str:
         chosen = str((parameters or {}).get("decision_backend", self.settings.decision_backend_default)).strip().lower()
-        if chosen in {"deterministic", "ollama", "openrouter", "anthropic"}:
+        if chosen in {"deterministic", "ollama", "openai", "openrouter", "anthropic", "xai"}:
             return chosen
         return self.settings.decision_backend_default
 
@@ -789,6 +832,78 @@ class TradingAgent:
             logger.warning("Ollama call failed, falling back", extra={"error": str(exc)})
             return None
 
+    def _resolve_llm_api_key(self, provider: str, fallback: str | None) -> str | None:
+        client_value = self.llm_credentials.get(f"{provider}_api_key")
+        if isinstance(client_value, str) and client_value.strip():
+            return client_value.strip()
+        if isinstance(fallback, str) and fallback.strip():
+            return fallback.strip()
+        return None
+
+    @staticmethod
+    def _parse_llm_json_content(content: str) -> dict[str, Any] | None:
+        text = content.strip()
+        if text.startswith("```"):
+            text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
+            text = re.sub(r"\s*```$", "", text)
+        try:
+            parsed = json.loads(text)
+        except Exception:  # noqa: BLE001
+            return None
+        if not isinstance(parsed, dict):
+            return None
+        return parsed
+
+    async def _call_openai(
+        self,
+        mode: str,
+        message: str,
+        context: Any,
+        fallback_reasoning: str,
+        fallback_trade: dict[str, Any] | None,
+        tool_trace_id: str,
+    ) -> dict[str, Any] | None:
+        api_key = self._resolve_llm_api_key("openai", self.settings.openai_api_key)
+        if not api_key:
+            return None
+        return await self._call_openai_compatible(
+            provider_name="OpenAI",
+            api_key=api_key,
+            base_url=self.settings.openai_base_url,
+            model=self.settings.openai_model,
+            mode=mode,
+            message=message,
+            context=context,
+            fallback_reasoning=fallback_reasoning,
+            fallback_trade=fallback_trade,
+            tool_trace_id=tool_trace_id,
+        )
+
+    async def _call_xai(
+        self,
+        mode: str,
+        message: str,
+        context: Any,
+        fallback_reasoning: str,
+        fallback_trade: dict[str, Any] | None,
+        tool_trace_id: str,
+    ) -> dict[str, Any] | None:
+        api_key = self._resolve_llm_api_key("xai", self.settings.xai_api_key)
+        if not api_key:
+            return None
+        return await self._call_openai_compatible(
+            provider_name="xAI",
+            api_key=api_key,
+            base_url=self.settings.xai_base_url,
+            model=self.settings.xai_model,
+            mode=mode,
+            message=message,
+            context=context,
+            fallback_reasoning=fallback_reasoning,
+            fallback_trade=fallback_trade,
+            tool_trace_id=tool_trace_id,
+        )
+
     async def _call_openrouter(
         self,
         mode: str,
@@ -798,9 +913,43 @@ class TradingAgent:
         fallback_trade: dict[str, Any] | None,
         tool_trace_id: str,
     ) -> dict[str, Any] | None:
-        if not self.settings.openrouter_api_key:
+        api_key = self._resolve_llm_api_key("openrouter", self.settings.openrouter_api_key)
+        if not api_key:
             return None
 
+        headers: dict[str, str] = {}
+        if self.settings.openrouter_site_url:
+            headers["HTTP-Referer"] = self.settings.openrouter_site_url
+        if self.settings.openrouter_app_name:
+            headers["X-Title"] = self.settings.openrouter_app_name
+        return await self._call_openai_compatible(
+            provider_name="OpenRouter",
+            api_key=api_key,
+            base_url=self.settings.openrouter_base_url,
+            model=self.settings.openrouter_model,
+            mode=mode,
+            message=message,
+            context=context,
+            fallback_reasoning=fallback_reasoning,
+            fallback_trade=fallback_trade,
+            tool_trace_id=tool_trace_id,
+            extra_headers=headers,
+        )
+
+    async def _call_openai_compatible(
+        self,
+        provider_name: str,
+        api_key: str,
+        base_url: str,
+        model: str,
+        mode: str,
+        message: str,
+        context: Any,
+        fallback_reasoning: str,
+        fallback_trade: dict[str, Any] | None,
+        tool_trace_id: str,
+        extra_headers: dict[str, str] | None = None,
+    ) -> dict[str, Any] | None:
         prompt = CONFIRMATION_PROMPT if mode == "confirmation" else AUTONOMOUS_PROMPT
         system = (
             f"{prompt}\n\n"
@@ -813,7 +962,7 @@ class TradingAgent:
             f"Context net greeks: {json.dumps(context.net_greeks)}"
         )
         body = {
-            "model": self.settings.openrouter_model,
+            "model": model,
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
@@ -821,18 +970,15 @@ class TradingAgent:
             "temperature": 0.1,
         }
         headers = {
-            "Authorization": f"Bearer {self.settings.openrouter_api_key}",
+            "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
-        if self.settings.openrouter_site_url:
-            headers["HTTP-Referer"] = self.settings.openrouter_site_url
-        if self.settings.openrouter_app_name:
-            headers["X-Title"] = self.settings.openrouter_app_name
-
+        if extra_headers:
+            headers.update(extra_headers)
         try:
             timeout = httpx.Timeout(25.0, connect=5.0)
             async with httpx.AsyncClient(timeout=timeout) as client:
-                res = await client.post(f"{self.settings.openrouter_base_url}/chat/completions", headers=headers, json=body)
+                res = await client.post(f"{base_url}/chat/completions", headers=headers, json=body)
                 res.raise_for_status()
                 payload = res.json()
             content = (
@@ -842,11 +988,9 @@ class TradingAgent:
             )
             if not isinstance(content, str) or not content.strip():
                 return None
-            text = content.strip()
-            if text.startswith("```"):
-                text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
-                text = re.sub(r"\s*```$", "", text)
-            parsed = json.loads(text)
+            parsed = self._parse_llm_json_content(content)
+            if parsed is None:
+                return None
             parsed_trade = parsed.get("trade") if "trade" in parsed else fallback_trade
             if not self._is_executable_trade(parsed_trade) and fallback_trade is not None:
                 parsed_trade = fallback_trade
@@ -859,7 +1003,7 @@ class TradingAgent:
                 "tool_results": [],
             }
         except Exception as exc:  # noqa: BLE001
-            logger.warning("OpenRouter call failed, falling back", extra={"error": str(exc)})
+            logger.warning("%s call failed, falling back", provider_name, extra={"error": str(exc)})
             return None
 
     def _empty_tool_metadata(self) -> dict[str, Any]:

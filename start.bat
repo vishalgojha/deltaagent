@@ -31,15 +31,36 @@ if errorlevel 1 (
   exit /b 1
 )
 
-if not exist ".\.venv\Scripts\python.exe" (
-  echo [ERROR] Python virtual env not found at .\.venv\Scripts\python.exe
+set "PYTHON_EXE="
+if exist ".\.venv\Scripts\python.exe" (
+  set "PYTHON_EXE=.\.venv\Scripts\python.exe"
+)
+
+if not defined PYTHON_EXE (
+  for /d %%d in (.\.venv*) do (
+    if exist "%%d\Scripts\python.exe" (
+      set "PYTHON_EXE=%%d\Scripts\python.exe"
+      goto :python_ready
+    )
+  )
+)
+
+:python_ready
+if not defined PYTHON_EXE (
+  echo [ERROR] Python virtual env not found.
+  echo Expected one of:
+  echo   .\.venv\Scripts\python.exe
+  echo   .\.venv*\Scripts\python.exe
   echo Create it first, then run this script again.
+  echo Example:
+  echo   py -3.11 -m venv .venv
   pause
   exit /b 1
 )
 
 echo [2/3] Starting Backend (new window)...
-start "DeltaAgent Backend" cmd /k "cd /d %~dp0 && .\.venv\Scripts\python.exe -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload"
+echo [INFO] Using Python runtime: %PYTHON_EXE%
+start "DeltaAgent Backend" cmd /k "cd /d %~dp0 && %PYTHON_EXE% -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload"
 
 if not exist ".\frontend\package.json" (
   echo [ERROR] Frontend package.json not found.

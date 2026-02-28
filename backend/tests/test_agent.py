@@ -452,7 +452,7 @@ async def test_confirmation_mode_handles_relative_expiry_and_multileg_preview() 
 
 
 @pytest.mark.asyncio
-async def test_resolve_decision_backend_accepts_openrouter() -> None:
+async def test_resolve_decision_backend_accepts_supported_values() -> None:
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -462,5 +462,40 @@ async def test_resolve_decision_backend_accepts_openrouter() -> None:
         broker = MockBroker()
         await broker.connect()
         agent = TradingAgent(broker, db, AgentMemoryStore(), RiskGovernor())
-        backend = agent._resolve_decision_backend({"decision_backend": "openrouter"})
-        assert backend == "openrouter"
+        for backend_name in ("openrouter", "openai", "xai", "anthropic", "ollama", "deterministic"):
+            backend = agent._resolve_decision_backend({"decision_backend": backend_name})
+            assert backend == backend_name
+
+
+@pytest.mark.asyncio
+async def test_delta_query_parses_esmini_alias() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with session_maker() as db:
+        client_id = uuid.uuid4()
+        db.add(
+            Client(
+                id=client_id,
+                email="esmini@example.com",
+                hashed_password=hash_password("secret"),
+                broker_type="ibkr",
+                encrypted_creds="enc",
+                risk_params={},
+                mode="confirmation",
+                tier="basic",
+                is_active=True,
+            )
+        )
+        await db.commit()
+
+        broker = MockBroker()
+        await broker.connect()
+        agent = TradingAgent(broker, db, AgentMemoryStore(), RiskGovernor())
+        result = await agent.chat(client_id, "Whats the strke for esmini delta 0.25 up and down?")
+
+        assert result["executed"] is False
+        assert "Nearest +0.25 call" in result["message"]
+        assert "Nearest -0.25 put" in result["message"]

@@ -4,6 +4,26 @@ export type LoginResponse = {
   client_id: string;
 };
 
+export type DecisionBackend =
+  | "ollama"
+  | "deterministic"
+  | "openai"
+  | "openrouter"
+  | "anthropic"
+  | "xai";
+
+export type LlmProviderStatus = {
+  configured: boolean;
+  source: "client" | "env" | "none";
+};
+
+export type LlmCredentialsStatus = {
+  openai: LlmProviderStatus;
+  anthropic: LlmProviderStatus;
+  openrouter: LlmProviderStatus;
+  xai: LlmProviderStatus;
+};
+
 export type AgentStatus = {
   client_id: string;
   mode: "confirmation" | "autonomous";

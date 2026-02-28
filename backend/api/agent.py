@@ -19,6 +19,9 @@ from backend.schemas import (
     ChatResponse,
     ChatRequest,
     EmergencyHaltResponse,
+    LlmCredentialsStatusOut,
+    LlmCredentialsUpdateRequest,
+    LlmProviderStatusOut,
     ModeUpdateRequest,
     ParametersUpdateRequest,
     ProposalOut,
@@ -34,6 +37,23 @@ def _decrypt_creds(current_client: Client) -> dict:
         return vault.decrypt(current_client.encrypted_creds)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=f"Credential decrypt failed: {exc}") from exc
+
+
+def _llm_provider_status(client_value: object, env_value: object) -> LlmProviderStatusOut:
+    if isinstance(client_value, str) and client_value.strip():
+        return LlmProviderStatusOut(configured=True, source="client")
+    if isinstance(env_value, str) and env_value.strip():
+        return LlmProviderStatusOut(configured=True, source="env")
+    return LlmProviderStatusOut(configured=False, source="none")
+
+
+def _build_llm_credentials_status(llm_credentials: dict[str, object], settings) -> LlmCredentialsStatusOut:
+    return LlmCredentialsStatusOut(
+        openai=_llm_provider_status(llm_credentials.get("openai_api_key"), settings.openai_api_key),
+        anthropic=_llm_provider_status(llm_credentials.get("anthropic_api_key"), settings.anthropic_api_key),
+        openrouter=_llm_provider_status(llm_credentials.get("openrouter_api_key"), settings.openrouter_api_key),
+        xai=_llm_provider_status(llm_credentials.get("xai_api_key"), settings.xai_api_key),
+    )
 
 
 @router.post("/{id}/agent/mode")
@@ -86,6 +106,55 @@ async def get_parameters(
 ) -> dict:
     assert_client_scope(id, current_client)
     return {"client_id": id, "risk_parameters": merge_risk_parameters(current_client.risk_params)}
+
+
+@router.get("/{id}/agent/llm-credentials", response_model=LlmCredentialsStatusOut)
+async def get_llm_credentials_status(
+    id: uuid.UUID,
+    current_client: Client = Depends(get_current_client),
+) -> LlmCredentialsStatusOut:
+    assert_client_scope(id, current_client)
+    creds = _decrypt_creds(current_client)
+    llm_credentials = creds.get("llm_credentials")
+    llm_map = llm_credentials if isinstance(llm_credentials, dict) else {}
+    return _build_llm_credentials_status(llm_map, get_settings())
+
+
+@router.post("/{id}/agent/llm-credentials", response_model=LlmCredentialsStatusOut)
+async def update_llm_credentials(
+    id: uuid.UUID,
+    payload: LlmCredentialsUpdateRequest,
+    current_client: Client = Depends(get_current_client),
+    db: AsyncSession = Depends(get_db_session),
+) -> LlmCredentialsStatusOut:
+    assert_client_scope(id, current_client)
+    creds = _decrypt_creds(current_client)
+    llm_credentials = creds.get("llm_credentials")
+    llm_map = dict(llm_credentials) if isinstance(llm_credentials, dict) else {}
+
+    updates = {
+        "openai_api_key": payload.openai_api_key,
+        "anthropic_api_key": payload.anthropic_api_key,
+        "openrouter_api_key": payload.openrouter_api_key,
+        "xai_api_key": payload.xai_api_key,
+    }
+    for key, raw_value in updates.items():
+        if raw_value is None:
+            continue
+        value = raw_value.strip()
+        if value:
+            llm_map[key] = value
+        else:
+            llm_map.pop(key, None)
+
+    if llm_map:
+        creds["llm_credentials"] = llm_map
+    else:
+        creds.pop("llm_credentials", None)
+
+    current_client.encrypted_creds = vault.encrypt(creds)
+    await db.commit()
+    return _build_llm_credentials_status(llm_map, get_settings())
 
 
 @router.post("/{id}/agent/chat", response_model=ChatResponse)
