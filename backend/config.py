@@ -50,6 +50,20 @@ class Settings(BaseSettings):
     auto_create_tables: bool = Field(default=True, alias="AUTO_CREATE_TABLES")
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"], alias="CORS_ORIGINS")
 
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def _normalize_database_url(cls, value: Any) -> str:
+        if not isinstance(value, str):
+            return "sqlite+aiosqlite:///./trading.db"
+        raw = value.strip()
+        if raw.startswith("postgres://"):
+            return "postgresql+asyncpg://" + raw[len("postgres://") :]
+        if raw.startswith("postgresql://"):
+            return "postgresql+asyncpg://" + raw[len("postgresql://") :]
+        if raw.startswith("postgresql+psycopg2://"):
+            return "postgresql+asyncpg://" + raw[len("postgresql+psycopg2://") :]
+        return raw
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def _normalize_cors_origins(cls, value: Any) -> list[str]:
