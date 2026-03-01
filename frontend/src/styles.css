@@ -275,6 +275,12 @@ pre {
   background: rgba(255, 68, 68, 0.12);
 }
 
+.shell-pill.simple {
+  color: #fef3c7;
+  border-color: rgba(245, 158, 11, 0.55);
+  background: rgba(245, 158, 11, 0.2);
+}
+
 .layout {
   margin: 0 auto;
   max-width: 1480px;
@@ -866,6 +872,27 @@ pre {
 .strategy-templates-page .preflight-check {
   background: rgba(10, 16, 25, 0.72);
   border-color: rgba(91, 105, 130, 0.52);
+}
+
+.paper-trade-page .card {
+  border-radius: 8px;
+  background: rgba(13, 18, 27, 0.9);
+  border-color: rgba(91, 105, 130, 0.44);
+}
+
+.paper-check-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid rgba(91, 105, 130, 0.4);
+  border-radius: var(--radius-sm);
+  background: rgba(9, 14, 22, 0.64);
+  padding: 10px;
+}
+
+.paper-check-item input[type="checkbox"] {
+  margin-top: 2px;
+  width: auto;
 }
 
 .strategy-templates-page .strategy-preview {

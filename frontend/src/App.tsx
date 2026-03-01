@@ -7,10 +7,14 @@ import { LoginPage } from "./pages/LoginPage";
 import { AgentConsolePage } from "./pages/AgentConsolePage";
 import { OnboardingPage } from "./pages/OnboardingPage";
 import { BrokerSettingsPage } from "./pages/BrokerSettingsPage";
+import { ApiKeysPage } from "./pages/ApiKeysPage";
 import { StrategyTemplatesPage } from "./pages/StrategyTemplatesPage";
 import { AdminSafetyPage } from "./pages/AdminSafetyPage";
+import { FirstPaperTradePage } from "./pages/FirstPaperTradePage";
 import { LandingPage } from "./pages/LandingPage";
-import { clearSession, getSession } from "./store/session";
+import { clearSession } from "./store/session";
+import { useSession } from "./hooks/useSession";
+import { SIMPLE_MODE } from "./config/uiMode";
 
 class RouteErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
   state = { hasError: false };
@@ -39,7 +43,7 @@ class RouteErrorBoundary extends Component<{ children: ReactNode }, { hasError: 
 }
 
 function RequireSession() {
-  const { token, clientId } = getSession();
+  const { token, clientId } = useSession();
   if (!token || !clientId) return <Navigate to="/login" replace />;
   return <Outlet />;
 }
@@ -47,7 +51,8 @@ function RequireSession() {
 function ShellLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { token, clientId } = getSession();
+  const { token, clientId } = useSession();
+  if (!token || !clientId) return <Navigate to="/login" replace />;
   const haltQuery = useQuery({
     queryKey: ["client-emergency-halt", clientId],
     queryFn: () => getEmergencyHaltStatus(clientId),
@@ -56,13 +61,21 @@ function ShellLayout() {
   const isHalted = Boolean(haltQuery.data?.halted);
   const haltReason = haltQuery.data?.reason || "Emergency trading halt is active";
 
-  const navItems = [
-    { to: "/dashboard", label: "Dashboard", icon: "◈" },
-    { to: "/agent", label: "Agent Console", icon: "◎" },
-    { to: "/settings/broker", label: "Broker Settings", icon: "⊙" },
-    { to: "/strategy-templates", label: "Strategy Templates", icon: "◇" },
-    { to: "/admin/safety", label: "Admin Safety", icon: "⊘" },
-  ];
+  const navItems = SIMPLE_MODE
+    ? [
+        { to: "/first-paper-trade", label: "First Paper Trade", icon: "➀" },
+        { to: "/settings/broker", label: "Broker Settings", icon: "⊙" },
+        { to: "/agent", label: "Agent Console", icon: "◎" },
+        { to: "/dashboard", label: "Risk Dashboard", icon: "◈" }
+      ]
+    : [
+        { to: "/dashboard", label: "Dashboard", icon: "◈" },
+        { to: "/agent", label: "Agent Console", icon: "◎" },
+        { to: "/settings/broker", label: "Broker Settings", icon: "⊙" },
+        { to: "/settings/api-keys", label: "API Keys", icon: "◉" },
+        { to: "/strategy-templates", label: "Strategy Templates", icon: "◇" },
+        { to: "/admin/safety", label: "Admin Safety", icon: "⊘" }
+      ];
 
   const currentLabel = navItems.find((item) => location.pathname.startsWith(item.to))?.label ?? "Console";
 
@@ -98,6 +111,7 @@ function ShellLayout() {
             <p className="shell-topbar-sub">Client {clientId.slice(0, 8)}...</p>
           </div>
           <div className="shell-topbar-right">
+            {SIMPLE_MODE && <span className="shell-pill simple">Simple Mode</span>}
             <span className={`shell-pill ${isHalted ? "halt" : "ok"}`}>{isHalted ? "Execution Halted" : "Execution Ready"}</span>
             <button
               className="secondary"
@@ -119,12 +133,17 @@ function ShellLayout() {
             </section>
           )}
           <Routes>
+            <Route
+              path="/first-paper-trade"
+              element={<FirstPaperTradePage clientId={clientId} isHalted={isHalted} haltReason={haltReason} />}
+            />
             <Route path="/dashboard" element={<DashboardPage clientId={clientId} />} />
             <Route path="/agent" element={<AgentConsolePage clientId={clientId} token={token} isHalted={isHalted} haltReason={haltReason} />} />
             <Route path="/settings/broker" element={<BrokerSettingsPage clientId={clientId} />} />
-            <Route path="/strategy-templates" element={<StrategyTemplatesPage isHalted={isHalted} haltReason={haltReason} />} />
-            <Route path="/admin/safety" element={<AdminSafetyPage />} />
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            {!SIMPLE_MODE && <Route path="/settings/api-keys" element={<ApiKeysPage clientId={clientId} />} />}
+            {!SIMPLE_MODE && <Route path="/strategy-templates" element={<StrategyTemplatesPage isHalted={isHalted} haltReason={haltReason} />} />}
+            {!SIMPLE_MODE && <Route path="/admin/safety" element={<AdminSafetyPage />} />}
+            <Route path="*" element={<Navigate to={SIMPLE_MODE ? "/first-paper-trade" : "/dashboard"} replace />} />
           </Routes>
         </div>
       </main>
